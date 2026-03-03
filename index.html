@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FaturaApp</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
   *{margin:0;padding:0;box-sizing:border-box}
@@ -15,7 +16,6 @@
     --mono:'JetBrains Mono',monospace;--sans:'Inter',sans-serif;
   }
   body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;display:flex;flex-direction:column}
-  /* LAYOUT */
   .app{display:flex;flex:1;height:100vh;overflow:hidden}
   .sidebar{width:220px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:0;flex-shrink:0}
   .sidebar-logo{padding:24px 20px 20px;border-bottom:1px solid var(--border)}
@@ -36,7 +36,6 @@
   .topbar h2{font-size:20px;font-weight:700}
   .topbar-right{display:flex;gap:10px;align-items:center}
   .content{padding:28px;flex:1}
-  /* BUTTONS */
   .btn{display:inline-flex;align-items:center;gap:7px;padding:9px 18px;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:.15s;font-family:var(--sans)}
   .btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff}
   .btn-primary:hover{opacity:.9;transform:translateY(-1px)}
@@ -45,105 +44,92 @@
   .btn-danger{background:#F43F5E22;color:var(--red);border:1px solid #F43F5E44}
   .btn-success{background:#22D3A522;color:var(--green);border:1px solid #22D3A544}
   .btn-lg{padding:12px 28px;font-size:15px;border-radius:12px}
-  /* CARDS */
   .card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px}
-  .card-sm{padding:16px}
   .stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
   .stat-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px;position:relative;overflow:hidden}
   .stat-card::before{content:'';position:absolute;top:-20px;right:-20px;width:80px;height:80px;border-radius:50%;opacity:.08}
-  .stat-card.blue::before{background:var(--accent)}
-  .stat-card.green::before{background:var(--green)}
-  .stat-card.orange::before{background:var(--orange)}
-  .stat-card.purple::before{background:var(--purple)}
+  .stat-card.blue::before{background:var(--accent)}.stat-card.green::before{background:var(--green)}
+  .stat-card.orange::before{background:var(--orange)}.stat-card.purple::before{background:var(--purple)}
   .stat-label{font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.5px;text-transform:uppercase;margin-bottom:8px}
   .stat-value{font-size:26px;font-weight:700;font-family:var(--mono)}
   .stat-sub{font-size:12px;color:var(--muted);margin-top:4px}
   .stat-badge{display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;margin-top:6px}
-  /* TABLE */
   .table-wrap{background:var(--surface);border:1px solid var(--border);border-radius:16px;overflow:hidden}
-  .table-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px}
   table{width:100%;border-collapse:collapse}
   th{padding:11px 20px;text-align:left;font-size:11px;font-weight:600;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;border-bottom:1px solid var(--border);background:var(--surface2)}
   td{padding:14px 20px;font-size:13px;border-bottom:1px solid var(--border)}
   tr:last-child td{border-bottom:none}
   tr:hover td{background:var(--surface2)}
   .badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600}
-  .badge-green{background:#22D3A522;color:var(--green)}
-  .badge-orange{background:#F59E0B22;color:var(--orange)}
-  .badge-blue{background:#5B6EF522;color:var(--accent)}
-  .badge-red{background:#F43F5E22;color:var(--red)}
-  .badge-purple{background:#A855F722;color:var(--purple)}
-  /* SEARCH */
+  .badge-green{background:#22D3A522;color:var(--green)}.badge-orange{background:#F59E0B22;color:var(--orange)}
+  .badge-blue{background:#5B6EF522;color:var(--accent)}.badge-red{background:#F43F5E22;color:var(--red)}.badge-purple{background:#A855F722;color:var(--purple)}
   .search-box{display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:8px 14px}
   .search-box input{background:none;border:none;outline:none;color:var(--text);font-size:13px;width:200px;font-family:var(--sans)}
   .search-box input::placeholder{color:var(--muted)}
-  /* MODAL */
   .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);z-index:100;display:none;align-items:center;justify-content:center;padding:20px}
   .modal-overlay.open{display:flex}
   .modal{background:var(--surface);border:1px solid var(--border);border-radius:20px;width:100%;max-width:560px;max-height:90vh;overflow-y:auto;animation:slideUp .2s ease}
   @keyframes slideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
   .modal-header{padding:24px 24px 0;display:flex;align-items:center;justify-content:space-between}
   .modal-header h3{font-size:18px;font-weight:700}
-  .modal-body{padding:24px}
-  .modal-footer{padding:0 24px 24px;display:flex;gap:10px;justify-content:flex-end}
-  /* FORM */
+  .modal-body{padding:24px}.modal-footer{padding:0 24px 24px;display:flex;gap:10px;justify-content:flex-end}
   .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-  .form-group{display:flex;flex-direction:column;gap:6px}
-  .form-group.full{grid-column:1/-1}
+  .form-group{display:flex;flex-direction:column;gap:6px}.form-group.full{grid-column:1/-1}
   label{font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.3px}
   input,select,textarea{background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:10px 13px;color:var(--text);font-size:13px;font-family:var(--sans);outline:none;transition:.15s}
   input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px #5B6EF520}
   select option{background:var(--surface2)}
-  /* SCAN */
-  .scan-area{background:var(--surface2);border:2px dashed var(--border);border-radius:16px;padding:40px;text-align:center;cursor:pointer;transition:.2s}
-  .scan-area:hover{border-color:var(--accent);background:#5B6EF508}
-  .scan-icon{font-size:48px;margin-bottom:12px}
-  .qr-frame{width:140px;height:140px;margin:0 auto 16px;position:relative}
-  .qr-frame::before,.qr-frame::after{content:'';position:absolute;width:28px;height:28px;border-color:var(--accent);border-style:solid}
-  .qr-frame::before{top:0;left:0;border-width:3px 0 0 3px;border-radius:4px 0 0 0}
-  .qr-frame::after{bottom:0;right:0;border-width:0 3px 3px 0;border-radius:0 0 4px 0}
-  .qr-inner{width:100%;height:100%;display:grid;grid-template-columns:1fr 1fr 1fr;place-items:center;opacity:.3;padding:16px}
-  .scan-line{position:absolute;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);box-shadow:0 0 8px var(--accent);animation:scanMove 1.5s ease-in-out infinite;top:0}
-  @keyframes scanMove{0%{top:0}50%{top:calc(100% - 2px)}100%{top:0}}
-  .progress-bar{height:4px;background:var(--surface2);border-radius:2px;overflow:hidden;margin:8px 0}
-  .progress-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:2px;transition:width .1s linear}
-  /* CHARTS */
   .chart-grid{display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:24px}
   .chart-wrap{position:relative;height:220px}
-  /* CAT PILLS */
   .cat-pills{display:flex;flex-wrap:wrap;gap:8px}
   .cat-pill{padding:7px 14px;border-radius:20px;border:1.5px solid var(--border);background:transparent;color:var(--muted);font-size:12px;font-weight:500;cursor:pointer;transition:.15s;font-family:var(--sans)}
   .cat-pill:hover,.cat-pill.active{border-color:var(--accent);background:#5B6EF520;color:var(--accent)}
-  /* TOAST */
   #toast{position:fixed;bottom:28px;right:28px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 20px;font-size:13px;font-weight:500;z-index:999;display:none;animation:fadeIn .2s ease;box-shadow:0 8px 32px rgba(0,0,0,.4)}
   @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-  /* FILTER BAR */
   .filter-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
   .filter-pill{padding:6px 14px;border-radius:20px;border:1.5px solid var(--border);background:transparent;color:var(--muted);font-size:12px;font-weight:500;cursor:pointer;transition:.15s;font-family:var(--sans)}
   .filter-pill:hover,.filter-pill.active{border-color:var(--accent);background:#5B6EF520;color:var(--accent)}
-  /* RESPONSIVE */
-  @media(max-width:900px){.stat-grid{grid-template-columns:1fr 1fr}.chart-grid{grid-template-columns:1fr}}
-  @media(max-width:600px){.sidebar{display:none}.stat-grid{grid-template-columns:1fr}}
-  /* SECTION */
   .section{display:none}.section.active{display:block}
-  .empty-state{text-align:center;padding:60px;color:var(--muted)}
-  .empty-state .e-icon{font-size:48px;margin-bottom:12px}
-  /* SUPPLIER NEW modal alert */
   .alert-box{background:#F59E0B11;border:1px solid #F59E0B44;border-radius:12px;padding:14px;margin-bottom:20px;display:flex;gap:10px;align-items:flex-start}
-  .alert-box .a-icon{font-size:18px;flex-shrink:0}
   .alert-box p{font-size:13px;color:#F59E0B;line-height:1.5}
-  /* SEND MODAL */
   .send-option{background:var(--surface2);border:1.5px solid var(--border);border-radius:12px;padding:16px;cursor:pointer;transition:.15s;display:flex;align-items:center;gap:12px;margin-bottom:10px}
   .send-option:hover{border-color:var(--accent);background:#5B6EF508}
   .send-option.selected{border-color:var(--accent);background:#5B6EF514}
   .so-icon{font-size:24px;width:40px;height:40px;background:var(--surface);border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-  /* clickable row */
   tr.clickable{cursor:pointer}
+  @media(max-width:900px){.stat-grid{grid-template-columns:1fr 1fr}.chart-grid{grid-template-columns:1fr}}
+  @media(max-width:640px){
+    .sidebar{display:none}
+    .stat-grid{grid-template-columns:1fr 1fr}
+    .topbar{padding:14px 16px}.topbar h2{font-size:16px}
+    .content{padding:16px}
+    .topbar-right .btn span{display:none}
+    .search-box input{width:120px}
+  }
+
+  /* ── CAMERA ── */
+  #camera-overlay{position:fixed;inset:0;background:#000;z-index:200;display:none;flex-direction:column;align-items:center;justify-content:center}
+  #camera-overlay.open{display:flex}
+  #cam-video{width:100%;max-width:480px;border-radius:0}
+  #cam-canvas{display:none}
+  .cam-frame{position:relative;width:100%;max-width:480px}
+  .cam-corners{position:absolute;inset:0;pointer-events:none}
+  .cam-corner{position:absolute;width:32px;height:32px;border-color:#5B6EF5;border-style:solid}
+  .cam-corner.tl{top:0;left:0;border-width:3px 0 0 3px;border-radius:6px 0 0 0}
+  .cam-corner.tr{top:0;right:0;border-width:3px 3px 0 0;border-radius:0 6px 0 0}
+  .cam-corner.bl{bottom:0;left:0;border-width:0 0 3px 3px;border-radius:0 0 0 6px}
+  .cam-corner.br{bottom:0;right:0;border-width:0 3px 3px 0;border-radius:0 0 6px 0}
+  .scan-line-real{position:absolute;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,#5B6EF5,transparent);box-shadow:0 0 8px #5B6EF5;animation:scanMove 2s ease-in-out infinite}
+  @keyframes scanMove{0%{top:0}50%{top:calc(100% - 2px)}100%{top:0}}
+  .cam-hint{color:rgba(255,255,255,.7);font-size:14px;margin-top:20px;text-align:center;padding:0 24px}
+  .cam-status{color:#fff;font-size:13px;margin-top:10px;min-height:20px;text-align:center}
+  .cam-close{position:absolute;top:20px;right:20px;background:rgba(255,255,255,.15);border:none;color:#fff;width:40px;height:40px;border-radius:50%;font-size:18px;cursor:pointer;backdrop-filter:blur(4px)}
+  .cam-switch{position:absolute;top:20px;left:20px;background:rgba(255,255,255,.15);border:none;color:#fff;width:40px;height:40px;border-radius:50%;font-size:18px;cursor:pointer;backdrop-filter:blur(4px)}
+  .cam-manual{margin-top:24px}
 </style>
 </head>
 <body>
 <div class="app">
-  <!-- SIDEBAR -->
   <aside class="sidebar">
     <div class="sidebar-logo">
       <h1>⬡ FaturaApp</h1>
@@ -164,10 +150,8 @@
     </div>
   </aside>
 
-  <!-- MAIN -->
   <main class="main">
-
-    <!-- ═══ DASHBOARD ═══ -->
+    <!-- DASHBOARD -->
     <div id="s-dashboard" class="section active">
       <div class="topbar">
         <h2>Dashboard</h2>
@@ -177,7 +161,7 @@
             <option value="0">Janeiro</option>
             <option value="1" selected>Fevereiro</option>
           </select>
-          <button class="btn btn-primary" onclick="showSection('scan',document.querySelector('.nav-item:nth-child(3)'))">⊡ Nova Fatura</button>
+          <button class="btn btn-primary" onclick="openCamera()">⊡ <span>Nova Fatura</span></button>
         </div>
       </div>
       <div class="content">
@@ -190,56 +174,47 @@
       </div>
     </div>
 
-    <!-- ═══ FATURAS ═══ -->
+    <!-- FATURAS -->
     <div id="s-faturas" class="section">
       <div class="topbar">
         <h2>Faturas</h2>
         <div class="topbar-right">
           <div class="search-box">🔍<input type="text" id="search-input" placeholder="Pesquisar..." oninput="renderTable()"></div>
-          <button class="btn btn-ghost" onclick="exportCSV()">⬇ CSV</button>
-          <button class="btn btn-primary" onclick="showSection('scan',document.querySelector('.nav-item:nth-child(3)'))">⊡ Nova Fatura</button>
+          <button class="btn btn-ghost" onclick="exportCSV()">⬇ <span>CSV</span></button>
+          <button class="btn btn-primary" onclick="openCamera()">⊡ <span>Nova</span></button>
         </div>
       </div>
       <div class="content">
         <div class="filter-bar" style="margin-bottom:16px" id="filter-bar"></div>
         <div class="table-wrap">
           <table id="inv-table">
-            <thead><tr>
-              <th>Nº Fatura</th><th>Fornecedor</th><th>Data</th><th>Categoria</th><th>Valor</th><th>IVA</th><th>Estado</th><th></th>
-            </tr></thead>
+            <thead><tr><th>Nº Fatura</th><th>Fornecedor</th><th>Data</th><th>Categoria</th><th>Valor</th><th>IVA</th><th>Estado</th><th></th></tr></thead>
             <tbody id="inv-tbody"></tbody>
           </table>
         </div>
       </div>
     </div>
 
-    <!-- ═══ SCAN ═══ -->
+    <!-- SCAN -->
     <div id="s-scan" class="section">
       <div class="topbar"><h2>Ler QR Code</h2></div>
       <div class="content" style="max-width:560px;margin:0 auto">
         <div class="card" style="text-align:center;margin-bottom:20px">
-          <div class="scan-area" id="scan-area" onclick="startScan()">
-            <div class="qr-frame">
-              <svg width="140" height="140" viewBox="0 0 140 140" style="opacity:.25">
-                <rect x="10" y="10" width="50" height="50" fill="none" stroke="#5B6EF5" stroke-width="4"/>
-                <rect x="22" y="22" width="26" height="26" fill="#5B6EF5"/>
-                <rect x="80" y="10" width="50" height="50" fill="none" stroke="#5B6EF5" stroke-width="4"/>
-                <rect x="92" y="22" width="26" height="26" fill="#5B6EF5"/>
-                <rect x="10" y="80" width="50" height="50" fill="none" stroke="#5B6EF5" stroke-width="4"/>
-                <rect x="22" y="92" width="26" height="26" fill="#5B6EF5"/>
-                <rect x="80" y="80" width="22" height="22" fill="#5B6EF5"/>
-                <rect x="108" y="80" width="22" height="22" fill="#5B6EF5"/>
-                <rect x="80" y="108" width="22" height="22" fill="#5B6EF5"/>
-                <rect x="108" y="108" width="22" height="22" fill="#5B6EF5"/>
-              </svg>
-              <div class="scan-line" id="scan-line" style="display:none"></div>
+          <div style="padding:40px 20px">
+            <div style="font-size:56px;margin-bottom:16px">📷</div>
+            <p style="font-size:16px;font-weight:600;margin-bottom:8px">Câmara do dispositivo</p>
+            <p style="font-size:13px;color:var(--muted);margin-bottom:24px">Aponte a câmara para o QR Code da fatura AT</p>
+            <button class="btn btn-primary btn-lg" onclick="openCamera()" style="width:100%;justify-content:center">
+              📷 Abrir Câmara
+            </button>
+            <div style="margin:20px 0;display:flex;align-items:center;gap:12px">
+              <div style="flex:1;height:1px;background:var(--border)"></div>
+              <span style="font-size:12px;color:var(--muted)">ou</span>
+              <div style="flex:1;height:1px;background:var(--border)"></div>
             </div>
-            <p style="font-size:15px;font-weight:600;margin-bottom:4px">Clique para simular leitura</p>
-            <p style="font-size:13px;color:var(--muted)">Numa app real, abre a câmara do dispositivo</p>
-          </div>
-          <div id="scan-progress" style="display:none;margin-top:16px">
-            <p style="font-size:13px;color:var(--muted);margin-bottom:6px">A processar QR Code...</p>
-            <div class="progress-bar"><div class="progress-fill" id="prog-fill" style="width:0%"></div></div>
+            <button class="btn btn-ghost" style="width:100%;justify-content:center" onclick="openManualForm()">
+              ✏️ Introduzir manualmente
+            </button>
           </div>
         </div>
         <div class="card" id="scan-result" style="display:none">
@@ -260,12 +235,12 @@
       </div>
     </div>
 
-    <!-- ═══ FORNECEDORES ═══ -->
+    <!-- FORNECEDORES -->
     <div id="s-fornecedores" class="section">
       <div class="topbar"><h2>Fornecedores</h2>
         <div class="topbar-right">
           <div class="search-box">🔍<input type="text" id="sup-search" placeholder="Pesquisar..." oninput="renderSuppliers()"></div>
-          <button class="btn btn-primary" onclick="openAddSupplier()">+ Adicionar</button>
+          <button class="btn btn-primary" onclick="openAddSupplier()">+ <span>Adicionar</span></button>
         </div>
       </div>
       <div class="content">
@@ -276,7 +251,7 @@
       </div>
     </div>
 
-    <!-- ═══ ENVIO ═══ -->
+    <!-- ENVIO -->
     <div id="s-envio" class="section">
       <div class="topbar"><h2>Envio para Contabilidade</h2></div>
       <div class="content" style="max-width:640px">
@@ -286,23 +261,13 @@
         </div>
         <div class="card">
           <div style="font-size:14px;font-weight:600;margin-bottom:16px">Método de envio</div>
-          <div id="send-options">
-            <div class="send-option selected" data-method="email" onclick="selectSendMethod(this)">
-              <div class="so-icon">📧</div>
-              <div><p style="font-weight:600;font-size:14px">Email</p><p style="font-size:12px;color:var(--muted)">Enviar faturas por email ao contabilista</p></div>
-            </div>
-            <div class="send-option" data-method="drive" onclick="selectSendMethod(this)">
-              <div class="so-icon">☁️</div>
-              <div><p style="font-weight:600;font-size:14px">Google Drive / Dropbox</p><p style="font-size:12px;color:var(--muted)">Exportar para pasta partilhada</p></div>
-            </div>
-            <div class="send-option" data-method="csv" onclick="selectSendMethod(this)">
-              <div class="so-icon">📊</div>
-              <div><p style="font-weight:600;font-size:14px">Exportar CSV / Excel</p><p style="font-size:12px;color:var(--muted)">Descarregar ficheiro com todas as faturas</p></div>
-            </div>
-          </div>
+          <div class="send-option selected" data-method="email" onclick="selectSendMethod(this)"><div class="so-icon">📧</div><div><p style="font-weight:600;font-size:14px">Email</p><p style="font-size:12px;color:var(--muted)">Enviar ao contabilista por email</p></div></div>
+          <div class="send-option" data-method="csv" onclick="selectSendMethod(this)"><div class="so-icon">📊</div><div><p style="font-weight:600;font-size:14px">Exportar CSV / Excel</p><p style="font-size:12px;color:var(--muted)">Descarregar ficheiro com todas as faturas</p></div></div>
           <div id="email-fields" style="margin-top:16px">
             <div class="form-group" style="margin-bottom:12px"><label>EMAIL DO CONTABILISTA</label><input type="email" id="acc-email" placeholder="contabilista@exemplo.pt" value="contabilidade@firma.pt"></div>
-            <div class="form-group"><label>MENSAGEM (OPCIONAL)</label><textarea rows="3" placeholder="Envio das faturas de Fevereiro 2024..." style="resize:none">Bom dia,&#10;Envio em anexo as faturas do período para processamento.&#10;Cumprimentos</textarea></div>
+            <div class="form-group"><label>MENSAGEM</label><textarea rows="3" style="resize:none">Bom dia,
+Envio em anexo as faturas do período para processamento.
+Cumprimentos</textarea></div>
           </div>
           <div style="margin-top:20px;display:flex;justify-content:flex-end">
             <button class="btn btn-primary btn-lg" onclick="sendToAccountant()">↑ Enviar Agora</button>
@@ -310,11 +275,30 @@
         </div>
       </div>
     </div>
-
   </main>
 </div>
 
-<!-- MODAL: Detalhe fatura -->
+<!-- CAMERA OVERLAY -->
+<div id="camera-overlay">
+  <button class="cam-close" onclick="closeCamera()">✕</button>
+  <button class="cam-switch" onclick="switchCamera()" title="Trocar câmara">🔄</button>
+  <div class="cam-frame">
+    <video id="cam-video" autoplay playsinline muted></video>
+    <canvas id="cam-canvas"></canvas>
+    <div class="cam-corners">
+      <div class="cam-corner tl"></div>
+      <div class="cam-corner tr"></div>
+      <div class="cam-corner bl"></div>
+      <div class="cam-corner br"></div>
+      <div class="scan-line-real"></div>
+    </div>
+  </div>
+  <p class="cam-hint">Aponte para o QR Code da fatura AT</p>
+  <p class="cam-status" id="cam-status">A iniciar câmara...</p>
+  <button class="btn btn-ghost cam-manual" onclick="closeCamera();openManualForm()">✏️ Introduzir manualmente</button>
+</div>
+
+<!-- MODAL: Detalhe -->
 <div class="modal-overlay" id="modal-detail">
   <div class="modal" style="max-width:520px">
     <div class="modal-header"><h3 id="detail-title">Fatura</h3><button onclick="closeModal('modal-detail')" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer">✕</button></div>
@@ -332,7 +316,7 @@
   <div class="modal" style="max-width:460px">
     <div class="modal-header"><h3>Novo Fornecedor</h3><button onclick="closeModal('modal-newsup')" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer">✕</button></div>
     <div class="modal-body">
-      <div class="alert-box"><span class="a-icon">⚠️</span><p id="newsup-alert-text">Fornecedor não encontrado na base de dados. Pretende qualificar e adicionar?</p></div>
+      <div class="alert-box"><span style="font-size:18px">⚠️</span><p id="newsup-alert-text">Fornecedor não encontrado. Pretende adicionar à base de dados?</p></div>
       <div class="form-grid">
         <div class="form-group full"><label>NOME</label><input id="ns-name" type="text"></div>
         <div class="form-group"><label>NIF</label><input id="ns-nif" type="text"></div>
@@ -383,9 +367,9 @@
 <div id="toast"></div>
 
 <script>
-// ═══════════════════════════════════════════════════════
+// ════════════════════════════════════════
 // DATA
-// ═══════════════════════════════════════════════════════
+// ════════════════════════════════════════
 const CAT_COLORS={"mercadorias":"#22D3A5","serviços":"#5B6EF5","combustível":"#F59E0B","despesas gerais":"#A855F7","investimento":"#F43F5E"};
 const CAT_ICONS={"mercadorias":"🛒","serviços":"⚙️","combustível":"⛽","despesas gerais":"📋","investimento":"📈"};
 const CAT_BADGES={"mercadorias":"badge-green","serviços":"badge-blue","combustível":"badge-orange","despesas gerais":"badge-purple","investimento":"badge-red"};
@@ -408,29 +392,30 @@ let suppliers=[
 let activeFilter="todas";
 let scanData=null;
 let scanCategory="serviços";
-let pendingSupplier=null;
-let scanCallback=null;
 let barChartInst=null,donutChartInst=null;
+let camStream=null;
+let camAnimFrame=null;
+let facingMode="environment"; // rear camera by default
 
-// ═══════════════════════════════════════════════════════
+// ════════════════════════════════════════
 // UTILS
-// ═══════════════════════════════════════════════════════
+// ════════════════════════════════════════
 const eur=v=>new Intl.NumberFormat("pt-PT",{style:"currency",currency:"EUR"}).format(v);
 const fmtDate=d=>new Date(d).toLocaleDateString("pt-PT",{day:"2-digit",month:"short",year:"numeric"});
 const uid=()=>Date.now()+Math.floor(Math.random()*1000);
 
-function toast(msg,dur=2800){
+function toast(msg,dur=3000){
   const t=document.getElementById("toast");
   t.textContent=msg;t.style.display="block";
-  setTimeout(()=>t.style.display="none",dur);
+  clearTimeout(t._t);
+  t._t=setTimeout(()=>t.style.display="none",dur);
 }
-
 function openModal(id){document.getElementById(id).classList.add("open")}
 function closeModal(id){document.getElementById(id).classList.remove("open")}
 
-// ═══════════════════════════════════════════════════════
+// ════════════════════════════════════════
 // NAV
-// ═══════════════════════════════════════════════════════
+// ════════════════════════════════════════
 function showSection(id,btn){
   document.querySelectorAll(".section").forEach(s=>s.classList.remove("active"));
   document.getElementById("s-"+id).classList.add("active");
@@ -442,9 +427,220 @@ function showSection(id,btn){
   if(id==="envio")renderPending();
 }
 
-// ═══════════════════════════════════════════════════════
+// ════════════════════════════════════════
+// CAMERA & QR
+// ════════════════════════════════════════
+async function openCamera(){
+  const overlay=document.getElementById("camera-overlay");
+  overlay.classList.add("open");
+  document.getElementById("cam-status").textContent="A iniciar câmara...";
+  await startCamera();
+}
+
+async function startCamera(){
+  // Stop any existing stream
+  if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null;}
+  if(camAnimFrame){cancelAnimationFrame(camAnimFrame);camAnimFrame=null;}
+
+  const video=document.getElementById("cam-video");
+  const status=document.getElementById("cam-status");
+
+  try {
+    const constraints={
+      video:{
+        facingMode:{ideal:facingMode},
+        width:{ideal:1280},
+        height:{ideal:720}
+      }
+    };
+    camStream=await navigator.mediaDevices.getUserMedia(constraints);
+    video.srcObject=camStream;
+    await video.play();
+    status.textContent="Aponte para o QR Code da fatura...";
+    scanQRLoop();
+  } catch(err){
+    console.error(err);
+    if(err.name==="NotAllowedError"){
+      status.textContent="❌ Permissão negada. Autorize o acesso à câmara nas definições do browser.";
+    } else if(err.name==="NotFoundError"){
+      status.textContent="❌ Câmara não encontrada neste dispositivo.";
+    } else {
+      status.textContent="❌ Erro: "+err.message;
+    }
+  }
+}
+
+function scanQRLoop(){
+  const video=document.getElementById("cam-video");
+  const canvas=document.getElementById("cam-canvas");
+  const ctx=canvas.getContext("2d",{willReadFrequently:true});
+
+  function tick(){
+    if(!camStream){return;}
+    if(video.readyState===video.HAVE_ENOUGH_DATA){
+      canvas.width=video.videoWidth;
+      canvas.height=video.videoHeight;
+      ctx.drawImage(video,0,0,canvas.width,canvas.height);
+      const imgData=ctx.getImageData(0,0,canvas.width,canvas.height);
+      const code=jsQR(imgData.data,imgData.width,imgData.height,{inversionAttempts:"dontInvert"});
+      if(code){
+        handleQRCode(code.data);
+        return; // stop loop
+      }
+    }
+    camAnimFrame=requestAnimationFrame(tick);
+  }
+  camAnimFrame=requestAnimationFrame(tick);
+}
+
+function handleQRCode(raw){
+  closeCamera();
+  document.getElementById("cam-status").textContent="QR Code lido!";
+
+  // Parse AT QR Code format
+  // AT format: A:NIF_EMITENTE*B:NIF_ADQUIRENTE*C:PAIS*D:TIPO*E:ESTADO*F:DATA*G:NUM_FATURA*H:ATCUD*I1:BASE*I2:TAXA*I5:BASE23*I6:IVA23*N:TOTAL_IVA*O:TOTAL
+  const parsed=parseATQR(raw);
+
+  // Try to find supplier name
+  const sup=suppliers.find(s=>s.nif===parsed.nif);
+  const supplierName=sup?sup.name:parsed.nif; // fallback to NIF if unknown
+
+  scanData={
+    supplier: supplierName,
+    nif: parsed.nif||"",
+    nifClient: parsed.nifClient||"",
+    num: parsed.num||`FT ${new Date().getFullYear()}/${uid().toString().slice(-6)}`,
+    date: parsed.date||new Date().toISOString().split("T")[0],
+    amount: parsed.total||0,
+    vat: parsed.vat||0,
+    atcud: parsed.atcud||"",
+    category: sup?sup.category:"serviços"
+  };
+  scanCategory=scanData.category;
+
+  // Show scan section
+  showSection("scan",document.querySelector(".nav-item:nth-child(3)"));
+
+  // Check supplier
+  if(!sup){
+    document.getElementById("newsup-alert-text").textContent=`NIF "${parsed.nif}" não está na base de dados. Pretende qualificar e adicionar?`;
+    document.getElementById("ns-name").value=supplierName;
+    document.getElementById("ns-nif").value=parsed.nif||"";
+    document.getElementById("ns-cat").value="serviços";
+    document.getElementById("newsup-skip").onclick=()=>{closeModal("modal-newsup");buildScanForm();};
+    openModal("modal-newsup");
+  } else {
+    buildScanForm();
+  }
+}
+
+function parseATQR(raw){
+  // AT QR Code is key:value pairs separated by *
+  const result={};
+  const pairs=raw.split("*");
+  for(const pair of pairs){
+    const idx=pair.indexOf(":");
+    if(idx===-1)continue;
+    const key=pair.substring(0,idx).trim();
+    const val=pair.substring(idx+1).trim();
+    switch(key){
+      case"A": result.nif=val; break;
+      case"B": result.nifClient=val; break;
+      case"F": // date AAAAMMDD
+        if(val.length===8){result.date=`${val.slice(0,4)}-${val.slice(4,6)}-${val.slice(6,8)}`;}
+        break;
+      case"G": result.num=val; break;
+      case"H": result.atcud=val; break;
+      case"O": result.total=parseFloat(val)||0; break;
+      case"N": result.vat=parseFloat(val)||0; break;
+    }
+  }
+  return result;
+}
+
+function closeCamera(){
+  if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null;}
+  if(camAnimFrame){cancelAnimationFrame(camAnimFrame);camAnimFrame=null;}
+  document.getElementById("cam-video").srcObject=null;
+  document.getElementById("camera-overlay").classList.remove("open");
+}
+
+function switchCamera(){
+  facingMode=facingMode==="environment"?"user":"environment";
+  startCamera();
+}
+
+// ════════════════════════════════════════
+// MANUAL FORM
+// ════════════════════════════════════════
+function openManualForm(){
+  scanData={supplier:"",nif:"",nifClient:"",num:"",date:new Date().toISOString().split("T")[0],amount:0,vat:0,atcud:"",category:"serviços"};
+  scanCategory="serviços";
+  showSection("scan",document.querySelector(".nav-item:nth-child(3)"));
+  buildScanForm();
+}
+
+// ════════════════════════════════════════
+// SCAN FORM
+// ════════════════════════════════════════
+function buildScanForm(){
+  document.getElementById("scan-result").style.display="block";
+  const fields=[
+    ["Nº FATURA","num","text"],["FORNECEDOR","supplier","text"],
+    ["NIF FORNECEDOR","nif","text"],["NIF CLIENTE","nifClient","text"],
+    ["DATA","date","date"],["VALOR TOTAL (€)","amount","number"],
+    ["IVA (€)","vat","number"],["ATCUD","atcud","text"]
+  ];
+  document.getElementById("scan-form-fields").innerHTML=fields.map(([l,k,t])=>`
+    <div class="form-group ${["num","supplier"].includes(k)?"full":""}">
+      <label>${l}</label>
+      <input type="${t}" id="sf-${k}" value="${scanData[k]||""}" ${t==="number"?'step="0.01"':''}>
+    </div>`).join("");
+  const cats=Object.keys(CAT_COLORS);
+  document.getElementById("cat-pills").innerHTML=cats.map(c=>`
+    <button class="cat-pill${scanCategory===c?" active":""}" onclick="setScanCat('${c}',this)">${CAT_ICONS[c]} ${c}</button>`).join("");
+}
+
+function setScanCat(c,btn){
+  scanCategory=c;
+  document.querySelectorAll("#cat-pills .cat-pill").forEach(p=>p.classList.remove("active"));
+  btn.classList.add("active");
+}
+
+function saveInvoice(){
+  const get=id=>document.getElementById("sf-"+id)?.value||"";
+  const num=get("num");
+  if(num&&invoices.find(i=>i.num===num)){toast("⚠️ Fatura duplicada detectada!");return;}
+  const inv={
+    id:uid(),supplier:get("supplier"),nif:get("nif"),nifClient:get("nifClient"),
+    num:num||`FT ${new Date().getFullYear()}/${uid().toString().slice(-6)}`,
+    date:get("date"),amount:parseFloat(get("amount"))||0,
+    vat:parseFloat(get("vat"))||0,atcud:get("atcud"),
+    category:scanCategory,status:"pendente"
+  };
+  invoices.unshift(inv);
+  toast("🧾 Fatura guardada com sucesso!");
+  resetScan();
+  showSection("faturas",document.querySelector(".nav-item:nth-child(2)"));
+}
+
+function resetScan(){
+  document.getElementById("scan-result").style.display="none";
+  scanData=null;
+}
+
+function confirmNewSupplier(){
+  const sup={nif:document.getElementById("ns-nif").value,name:document.getElementById("ns-name").value,category:document.getElementById("ns-cat").value};
+  if(!suppliers.find(s=>s.nif===sup.nif))suppliers.push(sup);
+  if(scanData){scanData.supplier=sup.name;scanData.category=sup.category;scanCategory=sup.category;}
+  closeModal("modal-newsup");
+  toast("✅ Fornecedor adicionado!");
+  buildScanForm();
+}
+
+// ════════════════════════════════════════
 // DASHBOARD
-// ═══════════════════════════════════════════════════════
+// ════════════════════════════════════════
 function getFiltered(){
   const p=document.getElementById("dash-period").value;
   if(p==="all")return invoices;
@@ -456,17 +652,14 @@ function renderDashboard(){
   const total=inv.reduce((a,i)=>a+i.amount,0);
   const vat=inv.reduce((a,i)=>a+i.vat,0);
   const pending=inv.filter(i=>i.status==="pendente").length;
-  const net=total-vat;
-  const sg=document.getElementById("stat-grid");
-  sg.innerHTML=`
+  document.getElementById("stat-grid").innerHTML=`
     <div class="stat-card blue"><div class="stat-label">Total Despesas</div><div class="stat-value">${eur(total)}</div><div class="stat-sub">${inv.length} faturas</div></div>
     <div class="stat-card green"><div class="stat-label">IVA Dedutível</div><div class="stat-value">${eur(vat)}</div><div class="stat-sub">a recuperar</div></div>
     <div class="stat-card orange"><div class="stat-label">Pendentes Envio</div><div class="stat-value">${pending}</div><span class="stat-badge" style="background:#F59E0B22;color:#F59E0B">${pending>0?"⚠ Ação necessária":"✓ Em dia"}</span></div>
-    <div class="stat-card purple"><div class="stat-label">Valor Líquido</div><div class="stat-value">${eur(net)}</div><div class="stat-sub">sem IVA</div></div>`;
+    <div class="stat-card purple"><div class="stat-label">Valor Líquido</div><div class="stat-value">${eur(total-vat)}</div><div class="stat-sub">sem IVA</div></div>`;
 
-  // Bar chart
   const months=["Out","Nov","Dez","Jan","Fev","Mar"];
-  const vals=months.map((m,i)=>{
+  const vals=months.map((_,i)=>{
     if(i===3)return invoices.filter(x=>new Date(x.date).getMonth()===0).reduce((a,x)=>a+x.amount,0);
     if(i===4)return invoices.filter(x=>new Date(x.date).getMonth()===1).reduce((a,x)=>a+x.amount,0);
     return Math.floor(Math.random()*600+80);
@@ -477,7 +670,6 @@ function renderDashboard(){
     options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{color:"#6B6B8A",font:{size:11}}},y:{grid:{color:"#2A2A3A"},ticks:{color:"#6B6B8A",font:{size:11},callback:v=>eur(v)}}}}
   });
 
-  // Donut
   const cats=Object.keys(CAT_COLORS).map(c=>({label:c,val:inv.filter(x=>x.category===c).reduce((a,x)=>a+x.amount,0)})).filter(c=>c.val>0);
   if(donutChartInst)donutChartInst.destroy();
   donutChartInst=new Chart(document.getElementById("donutChart"),{
@@ -485,34 +677,28 @@ function renderDashboard(){
     options:{responsive:true,maintainAspectRatio:false,cutout:"70%",plugins:{legend:{position:"bottom",labels:{color:"#6B6B8A",font:{size:11},padding:12,boxWidth:10,boxHeight:10}}}}
   });
 
-  // Top suppliers
   const supMap=inv.reduce((acc,x)=>{acc[x.supplier]=(acc[x.supplier]||0)+x.amount;return acc;},{});
   const sorted=Object.entries(supMap).sort((a,b)=>b[1]-a[1]).slice(0,5);
   const maxV=sorted[0]?.[1]||1;
   document.getElementById("top-suppliers").innerHTML=sorted.map(([n,v])=>`
     <div style="margin-bottom:14px">
-      <div style="display:flex;justify-content:space-between;margin-bottom:5px;font-size:13px">
-        <span>${n}</span><span style="color:var(--muted);font-family:var(--mono)">${eur(v)}</span>
-      </div>
-      <div style="height:5px;background:var(--surface2);border-radius:3px">
-        <div style="height:5px;border-radius:3px;background:linear-gradient(90deg,var(--accent),var(--accent2));width:${(v/maxV)*100}%;transition:.6s"></div>
-      </div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:5px;font-size:13px"><span>${n}</span><span style="color:var(--muted);font-family:var(--mono)">${eur(v)}</span></div>
+      <div style="height:5px;background:var(--surface2);border-radius:3px"><div style="height:5px;border-radius:3px;background:linear-gradient(90deg,var(--accent),var(--accent2));width:${(v/maxV)*100}%"></div></div>
     </div>`).join("");
 }
 
-// ═══════════════════════════════════════════════════════
+// ════════════════════════════════════════
 // FATURAS TABLE
-// ═══════════════════════════════════════════════════════
+// ════════════════════════════════════════
 function renderFilters(){
   const bar=document.getElementById("filter-bar");
-  const pills=["todas","pendente","enviada",...Object.keys(CAT_COLORS)];
-  bar.innerHTML=pills.map(p=>`<button class="filter-pill${activeFilter===p?" active":""}" onclick="setFilter('${p}')">${p}</button>`).join("");
+  bar.innerHTML=["todas","pendente","enviada",...Object.keys(CAT_COLORS)].map(p=>`
+    <button class="filter-pill${activeFilter===p?" active":""}" onclick="setFilter('${p}')">${p}</button>`).join("");
 }
-
 function setFilter(f){activeFilter=f;renderFilters();renderTable();}
 
 function renderTable(){
-  const q=document.getElementById("search-input").value.toLowerCase();
+  const q=(document.getElementById("search-input").value||"").toLowerCase();
   const tbody=document.getElementById("inv-tbody");
   const filtered=invoices.filter(i=>{
     const ms=!q||i.supplier.toLowerCase().includes(q)||i.num.toLowerCase().includes(q)||String(i.amount).includes(q);
@@ -534,151 +720,38 @@ function renderTable(){
 }
 
 function showDetail(id){
-  const inv=invoices.find(i=>i.id===id);
-  if(!inv)return;
+  const inv=invoices.find(i=>i.id===id);if(!inv)return;
   document.getElementById("detail-title").textContent=inv.num;
   document.getElementById("detail-body").innerHTML=`
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px">
       ${[["Fornecedor",inv.supplier],["NIF Fornecedor",inv.nif],["NIF Cliente",inv.nifClient],["Data",fmtDate(inv.date)],["Valor Total",eur(inv.amount)],["IVA",eur(inv.vat)],["ATCUD",inv.atcud],["Categoria",`${CAT_ICONS[inv.category]} ${inv.category}`]].map(([k,v])=>`
         <div style="background:var(--surface2);border-radius:10px;padding:12px">
-          <div style="font-size:11px;color:var(--muted);margin-bottom:4px;font-weight:600;letter-spacing:.3px">${k.toUpperCase()}</div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:4px;font-weight:600">${k.toUpperCase()}</div>
           <div style="font-size:13px;font-weight:500">${v}</div>
         </div>`).join("")}
     </div>
-    <div style="display:flex;align-items:center;gap:8px">
-      <span class="badge ${inv.status==="enviada"?"badge-green":"badge-orange"}" style="font-size:13px;padding:6px 14px">${inv.status==="enviada"?"✓ Enviada para contabilidade":"⏳ Pendente de envio"}</span>
-    </div>`;
-  const delBtn=document.getElementById("detail-del-btn");
-  const sendBtn=document.getElementById("detail-send-btn");
-  delBtn.onclick=()=>{invoices=invoices.filter(i=>i.id!==id);closeModal("modal-detail");renderTable();renderDashboard();toast("🗑️ Fatura eliminada");};
-  if(inv.status==="pendente"){sendBtn.style.display="";sendBtn.onclick=()=>{inv.status="enviada";closeModal("modal-detail");renderTable();renderDashboard();toast("📤 Marcada como enviada!");};}
-  else sendBtn.style.display="none";
+    <span class="badge ${inv.status==="enviada"?"badge-green":"badge-orange"}" style="font-size:13px;padding:6px 14px">${inv.status==="enviada"?"✓ Enviada":"⏳ Pendente"}</span>`;
+  document.getElementById("detail-del-btn").onclick=()=>{invoices=invoices.filter(i=>i.id!==id);closeModal("modal-detail");renderTable();renderDashboard();toast("🗑️ Eliminada");};
+  const sb=document.getElementById("detail-send-btn");
+  if(inv.status==="pendente"){sb.style.display="";sb.onclick=()=>{inv.status="enviada";closeModal("modal-detail");renderTable();renderDashboard();toast("📤 Marcada como enviada!");};}
+  else sb.style.display="none";
   openModal("modal-detail");
 }
 
-// ═══════════════════════════════════════════════════════
-// SCAN
-// ═══════════════════════════════════════════════════════
-const MOCK_QR=[
-  {supplier:"Repsol Portugal",nif:"501234567",nifClient:"123456789",amount:94.30,vat:18.86,category:"combustível"},
-  {supplier:"MEO Serviços",nif:"502942153",nifClient:"123456789",amount:38.50,vat:7.70,category:"serviços"},
-  {supplier:"Auchan",nif:"500724491",nifClient:"123456789",amount:187.60,vat:21.88,category:"mercadorias"},
-];
-
-function startScan(){
-  const sl=document.getElementById("scan-line");
-  const sp=document.getElementById("scan-progress");
-  const pf=document.getElementById("prog-fill");
-  sl.style.display="block";sp.style.display="block";
-  let p=0;
-  const iv=setInterval(()=>{
-    p+=Math.random()*15;
-    if(p>=100){p=100;clearInterval(iv);sl.style.display="none";sp.style.display="none";showScanResult();}
-    pf.style.width=p+"%";
-  },100);
-}
-
-function showScanResult(){
-  const mock=MOCK_QR[Math.floor(Math.random()*MOCK_QR.length)];
-  const year=new Date().getFullYear();
-  scanData={
-    supplier:mock.supplier, nif:mock.nif, nifClient:mock.nifClient,
-    num:`FT ${year}/${Math.floor(Math.random()*99999).toString().padStart(6,"0")}`,
-    date:new Date().toISOString().split("T")[0],
-    amount:mock.amount, vat:mock.vat,
-    atcud:Math.random().toString(36).substring(2,10).toUpperCase(),
-    category:mock.category
-  };
-  scanCategory=mock.category;
-
-  // Check supplier
-  const exists=suppliers.find(s=>s.nif===scanData.nif);
-  if(!exists){
-    pendingSupplier={nif:scanData.nif,name:scanData.supplier,category:mock.category};
-    document.getElementById("newsup-alert-text").textContent=`"${scanData.supplier}" não está na base de dados. Pretende qualificar e adicionar?`;
-    document.getElementById("ns-name").value=scanData.supplier;
-    document.getElementById("ns-nif").value=scanData.nif;
-    document.getElementById("ns-cat").value=mock.category;
-    document.getElementById("newsup-skip").onclick=()=>{closeModal("modal-newsup");buildScanForm();};
-    openModal("modal-newsup");
-  } else {
-    buildScanForm();
-  }
-}
-
-function confirmNewSupplier(){
-  const sup={nif:document.getElementById("ns-nif").value, name:document.getElementById("ns-name").value, category:document.getElementById("ns-cat").value};
-  if(!suppliers.find(s=>s.nif===sup.nif))suppliers.push(sup);
-  closeModal("modal-newsup");
-  toast("✅ Fornecedor adicionado!");
-  buildScanForm();
-}
-
-function buildScanForm(){
-  const r=document.getElementById("scan-result");
-  r.style.display="block";
-  const fields=[
-    ["Nº FATURA","num","text"],["FORNECEDOR","supplier","text"],
-    ["NIF FORNECEDOR","nif","text"],["NIF CLIENTE","nifClient","text"],
-    ["DATA","date","date"],["VALOR TOTAL (€)","amount","number"],
-    ["IVA (€)","vat","number"],["ATCUD","atcud","text"]
-  ];
-  document.getElementById("scan-form-fields").innerHTML=fields.map(([l,k,t])=>`
-    <div class="form-group ${["num","supplier"].includes(k)?"full":""}">
-      <label>${l}</label>
-      <input type="${t}" id="sf-${k}" value="${scanData[k]||""}" ${t==="number"?'step="0.01"':''}>
-    </div>`).join("");
-
-  const cats=Object.keys(CAT_COLORS);
-  document.getElementById("cat-pills").innerHTML=cats.map(c=>`<button class="cat-pill${scanCategory===c?" active":""}" onclick="setScanCat('${c}',this)">${CAT_ICONS[c]} ${c}</button>`).join("");
-}
-
-function setScanCat(c,btn){
-  scanCategory=c;
-  document.querySelectorAll("#cat-pills .cat-pill").forEach(p=>p.classList.remove("active"));
-  btn.classList.add("active");
-}
-
-function saveInvoice(){
-  const get=id=>document.getElementById("sf-"+id)?.value||"";
-  // Duplicate check
-  const num=get("num");
-  if(invoices.find(i=>i.num===num)){toast("⚠️ Fatura duplicada detectada!");return;}
-  const inv={id:uid(),supplier:get("supplier"),nif:get("nif"),nifClient:get("nifClient"),num,date:get("date"),amount:parseFloat(get("amount")),vat:parseFloat(get("vat")),atcud:get("atcud"),category:scanCategory,status:"pendente"};
-  invoices.unshift(inv);
-  toast("🧾 Fatura guardada com sucesso!");
-  resetScan();
-  showSection("faturas",document.querySelector(".nav-item:nth-child(2)"));
-}
-
-function resetScan(){
-  document.getElementById("scan-result").style.display="none";
-  document.getElementById("scan-progress").style.display="none";
-  document.getElementById("scan-line").style.display="none";
-  document.getElementById("prog-fill").style.width="0%";
-  scanData=null;
-}
-
-// ═══════════════════════════════════════════════════════
+// ════════════════════════════════════════
 // FORNECEDORES
-// ═══════════════════════════════════════════════════════
+// ════════════════════════════════════════
 function renderSuppliers(){
-  const q=document.getElementById("sup-search").value.toLowerCase();
-  const tbody=document.getElementById("sup-tbody");
+  const q=(document.getElementById("sup-search").value||"").toLowerCase();
   const filtered=suppliers.filter(s=>!q||s.name.toLowerCase().includes(q)||s.nif.includes(q));
-  if(!filtered.length){tbody.innerHTML=`<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--muted)">Nenhum fornecedor encontrado</td></tr>`;return;}
-  tbody.innerHTML=filtered.map(s=>{
+  document.getElementById("sup-tbody").innerHTML=filtered.length?filtered.map(s=>{
     const sinv=invoices.filter(i=>i.nif===s.nif);
-    const tot=sinv.reduce((a,i)=>a+i.amount,0);
-    return`<tr>
-      <td><strong>${s.name}</strong></td>
-      <td style="font-family:var(--mono);font-size:12px;color:var(--muted)">${s.nif}</td>
+    return`<tr><td><strong>${s.name}</strong></td><td style="font-family:var(--mono);font-size:12px;color:var(--muted)">${s.nif}</td>
       <td><span class="badge ${CAT_BADGES[s.category]}">${CAT_ICONS[s.category]} ${s.category}</span></td>
       <td style="color:var(--muted)">${sinv.length}</td>
-      <td style="font-family:var(--mono);font-weight:600">${eur(tot)}</td>
-    </tr>`;}).join("");
+      <td style="font-family:var(--mono);font-weight:600">${eur(sinv.reduce((a,i)=>a+i.amount,0))}</td></tr>`;
+  }).join(""):`<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--muted)">Nenhum fornecedor</td></tr>`;
 }
-
 function openAddSupplier(){openModal("modal-addsup");}
 function saveNewSupplier(){
   const s={nif:document.getElementById("as-nif").value,name:document.getElementById("as-name").value,category:document.getElementById("as-cat").value};
@@ -687,52 +760,48 @@ function saveNewSupplier(){
   suppliers.push(s);closeModal("modal-addsup");renderSuppliers();toast("✅ Fornecedor adicionado!");
 }
 
-// ═══════════════════════════════════════════════════════
+// ════════════════════════════════════════
 // ENVIO
-// ═══════════════════════════════════════════════════════
+// ════════════════════════════════════════
 function renderPending(){
   const pend=invoices.filter(i=>i.status==="pendente");
   const el=document.getElementById("pending-list");
-  if(!pend.length){el.innerHTML=`<div style="text-align:center;padding:30px;color:var(--muted)">✓ Todas as faturas foram enviadas</div>`;return;}
-  el.innerHTML=pend.map(i=>`
+  el.innerHTML=pend.length?pend.map(i=>`
     <div style="display:flex;align-items:center;justify-content:space-between;padding:12px;background:var(--surface2);border-radius:10px;margin-bottom:8px">
       <div><p style="font-weight:600;font-size:13px">${i.supplier}</p><p style="font-size:11px;color:var(--muted);font-family:var(--mono)">${i.num} · ${fmtDate(i.date)}</p></div>
       <span style="font-family:var(--mono);font-weight:600">${eur(i.amount)}</span>
-    </div>`).join("")+`<div style="font-size:12px;color:var(--muted);margin-top:8px">${pend.length} fatura${pend.length!==1?"s":""} · Total: <strong style="color:var(--text)">${eur(pend.reduce((a,i)=>a+i.amount,0))}</strong></div>`;
+    </div>`).join("")+`<div style="font-size:12px;color:var(--muted);margin-top:8px">${pend.length} fatura${pend.length!==1?"s":""} · Total: <strong style="color:var(--text)">${eur(pend.reduce((a,i)=>a+i.amount,0))}</strong></div>`
+    :`<div style="text-align:center;padding:30px;color:var(--muted)">✓ Todas as faturas foram enviadas</div>`;
 }
 
 let selectedMethod="email";
 function selectSendMethod(el){
   document.querySelectorAll(".send-option").forEach(s=>s.classList.remove("selected"));
-  el.classList.add("selected");
-  selectedMethod=el.dataset.method;
+  el.classList.add("selected");selectedMethod=el.dataset.method;
   document.getElementById("email-fields").style.display=selectedMethod==="email"?"block":"none";
 }
 
 function sendToAccountant(){
   const pend=invoices.filter(i=>i.status==="pendente");
   if(!pend.length){toast("Nenhuma fatura pendente!");return;}
-  if(selectedMethod==="csv"){exportCSV();invoices.forEach(i=>{if(i.status==="pendente")i.status="enviada";});renderPending();toast("📊 CSV exportado e faturas marcadas como enviadas!");return;}
+  if(selectedMethod==="csv"){exportCSV();}
   invoices.forEach(i=>{if(i.status==="pendente")i.status="enviada";});
   renderPending();
-  const email=selectedMethod==="email"?document.getElementById("acc-email").value:"pasta partilhada";
-  toast(`📤 ${pend.length} fatura${pend.length!==1?"s":""} enviada${pend.length!==1?"s":""} para ${email}!`);
+  const dest=selectedMethod==="email"?document.getElementById("acc-email").value:"ficheiro CSV";
+  toast(`📤 ${pend.length} fatura${pend.length!==1?"s":""} enviada${pend.length!==1?"s":""} para ${dest}!`);
 }
 
-// ═══════════════════════════════════════════════════════
-// EXPORT
-// ═══════════════════════════════════════════════════════
 function exportCSV(){
   const hdr=["ID","Nº Fatura","Fornecedor","NIF","NIF Cliente","Data","Valor","IVA","ATCUD","Categoria","Estado"];
-  const rows=invoices.map(i=>[i.id,i.num,i.supplier,i.nif,i.nifClient,i.date,i.amount,i.vat,i.atcud,i.category,i.status].join(","));
+  const rows=invoices.map(i=>[i.id,`"${i.num}"`,`"${i.supplier}"`,i.nif,i.nifClient,i.date,i.amount,i.vat,i.atcud,i.category,i.status].join(","));
   const csv=[hdr.join(","),...rows].join("\n");
-  const a=document.createElement("a");a.href="data:text/csv;charset=utf-8,"+encodeURIComponent(csv);a.download="faturas.csv";a.click();
+  const a=document.createElement("a");a.href="data:text/csv;charset=utf-8,\uFEFF"+encodeURIComponent(csv);a.download="faturas.csv";a.click();
   toast("📊 CSV exportado!");
 }
 
-// ═══════════════════════════════════════════════════════
+// ════════════════════════════════════════
 // INIT
-// ═══════════════════════════════════════════════════════
+// ════════════════════════════════════════
 renderDashboard();
 </script>
 </body>
