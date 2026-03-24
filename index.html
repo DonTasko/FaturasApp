@@ -140,6 +140,8 @@ header{flex-shrink:0;padding:14px 18px 10px;display:flex;align-items:center;just
 .gap8{display:flex;flex-direction:column;gap:8px}
 .import-drop{border:2px dashed var(--b2);border-radius:14px;padding:24px;text-align:center;cursor:pointer;transition:.15s;margin-bottom:12px}
 .import-drop:active{border-color:var(--acc);background:var(--acc-dim)}
+.dash-cam-btn{display:flex;align-items:center;gap:13px;background:linear-gradient(135deg,#4ADE8018,#22C55E10);border:1.5px solid #4ADE8033;border-radius:16px;padding:15px 16px;width:100%;cursor:pointer;font-family:var(--sans);text-align:left;transition:.15s}
+.dash-cam-btn:active{transform:scale(.97);background:var(--acc-dim)}
 </style>
 </head>
 <body>
@@ -161,6 +163,39 @@ header{flex-shrink:0;padding:14px 18px 10px;display:flex;align-items:center;just
   <div class="page on" id="p-dash">
     <div class="stat-row" id="stat-grid"></div>
     <div id="dash-pdf-row"></div>
+
+    <!-- Botão câmara rápida -->
+    <button class="dash-cam-btn" onclick="openCam()">
+      <span style="font-size:22px">📷</span>
+      <div>
+        <p style="font-size:13px;font-weight:700;color:var(--t)">Registar fatura</p>
+        <p style="font-size:11px;color:var(--t3);margin-top:1px">Abre câmara para ler QR Code</p>
+      </div>
+      <span style="font-size:18px;color:var(--acc);margin-left:auto">→</span>
+    </button>
+
+    <!-- Gráfico últimos 30 dias -->
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div class="card-title" style="margin:0">Últimos 30 dias</div>
+        <span id="chart30-total" style="font-size:11px;color:var(--t3);font-family:var(--mono)"></span>
+      </div>
+      <div style="position:relative;height:130px">
+        <canvas id="chart30"></canvas>
+      </div>
+    </div>
+
+    <!-- Gráfico última semana -->
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div class="card-title" style="margin:0">Última semana</div>
+        <span id="chart7-total" style="font-size:11px;color:var(--t3);font-family:var(--mono)"></span>
+      </div>
+      <div style="position:relative;height:120px">
+        <canvas id="chart7"></canvas>
+      </div>
+    </div>
+
     <div class="card">
       <div class="card-title">Por categoria</div>
       <div id="dash-cats"></div>
@@ -10964,6 +10999,9 @@ function renderDash(){
     <div class="stat b"><div class="stat-lbl">IVA Dedutível</div><div class="stat-val">${eur(vat)}</div><div class="stat-sub">a recuperar</div></div>
     <div class="stat p"><div class="stat-lbl">Pendentes</div><div class="stat-val">${pend}</div><div class="stat-sub">${pend?'⚠ por enviar':'✓ em dia'}</div></div>`;
 
+  renderChart30();
+  renderChart7();
+
   const dc=document.getElementById('dash-cats');
   const ct=categories.map(c=>({...c,
     total:invoices.filter(i=>i.catId===c.id).reduce((a,i)=>a+(+i.amount||0),0),
@@ -11007,6 +11045,194 @@ function renderDash(){
     ?rec.map(expHTML).join('')
     :`<div class="empty"><div class="ei">🧾</div><p>Nenhuma fatura ainda.<br>Use o Scanner para adicionar.</p></div>`;
 }
+
+// ── Gráfico 30 dias ──
+let chart30Instance=null,chart7Instance=null;
+
+function buildDailyData(days){
+  const now=new Date();
+  const labels=[],vals=[];
+  for(let i=days-1;i>=0;i--){
+    const d=new Date(now);d.setDate(d.getDate()-i);
+    const key=d.toISOString().slice(0,10);
+    labels.push(i===0?'Hoje':d.toLocaleDateString('pt-PT',{day:'2-digit',month:'short'}));
+    vals.push(invoices.filter(inv=>inv.date===key).reduce((a,inv)=>a+(+inv.amount||0),0));
+  }
+  return{labels,vals};
+}
+
+function renderChart30(){
+  const {labels,vals}=buildDailyData(30);
+  const total=vals.reduce((a,v)=>a+v,0);
+  const el=document.getElementById('chart30-total');
+  if(el)el.textContent=eur(total);
+  const canvas=document.getElementById('chart30');
+  if(!canvas)return;
+  if(chart30Instance){chart30Instance.destroy();chart30Instance=null;}
+  // Draw manually with canvas API — no Chart.js dependency
+  chart30Instance=drawBarChart(canvas,labels,vals,{
+    color:'#4ADE80',barColor:'#4ADE8066',gridColor:'#2A2B3A',
+    textColor:'#55566E',accentColor:'#4ADE80',
+    showLabels:false, // too many for 30d
+    showTooltip:true,
+  });
+}
+
+function renderChart7(){
+  const {labels,vals}=buildDailyData(7);
+  const total=vals.reduce((a,v)=>a+v,0);
+  const el=document.getElementById('chart7-total');
+  if(el)el.textContent=eur(total);
+  const canvas=document.getElementById('chart7');
+  if(!canvas)return;
+  if(chart7Instance){chart7Instance.destroy();chart7Instance=null;}
+  chart7Instance=drawBarChart(canvas,labels,vals,{
+    color:'#60A5FA',barColor:'#60A5FA88',gridColor:'#2A2B3A',
+    textColor:'#55566E',accentColor:'#60A5FA',
+    showLabels:true,
+    showTooltip:true,
+  });
+}
+
+// Canvas bar chart — zero dependencies
+function drawBarChart(canvas,labels,vals,opts){
+  const dpr=window.devicePixelRatio||1;
+  const rect=canvas.getBoundingClientRect();
+  const W=rect.width||canvas.parentElement.clientWidth||300;
+  const H=rect.height||130;
+  canvas.width=W*dpr; canvas.height=H*dpr;
+  canvas.style.width=W+'px'; canvas.style.height=H+'px';
+  const ctx=canvas.getContext('2d');
+  ctx.scale(dpr,dpr);
+
+  const pad={t:8,r:4,b:opts.showLabels?28:8,l:48};
+  const cW=W-pad.l-pad.r, cH=H-pad.t-pad.b;
+  const maxVal=Math.max(...vals,0.01);
+  const n=vals.length;
+  const barW=Math.max(2,(cW/n)*0.6);
+  const gap=(cW/n);
+
+  // Grid lines + Y labels
+  ctx.strokeStyle=opts.gridColor; ctx.lineWidth=1;
+  const steps=4;
+  for(let i=0;i<=steps;i++){
+    const y=pad.t+cH-(cH/steps)*i;
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+cW,y);
+    ctx.globalAlpha=.4;ctx.stroke();ctx.globalAlpha=1;
+    const v=(maxVal/steps)*i;
+    ctx.fillStyle=opts.textColor;ctx.font=`${9*dpr/dpr}px monospace`;
+    ctx.textAlign='right';ctx.textBaseline='middle';
+    ctx.fillText(v>=1000?(v/1000).toFixed(1)+'k':v.toFixed(0),pad.l-4,y);
+  }
+
+  // Bars
+  vals.forEach((v,i)=>{
+    const x=pad.l+i*gap+(gap-barW)/2;
+    const bH=cH*(v/maxVal);
+    const y=pad.t+cH-bH;
+
+    // Bar shadow / glow
+    ctx.shadowColor=opts.accentColor;
+    ctx.shadowBlur=v>0?6:0;
+
+    // Bar fill with gradient
+    const grad=ctx.createLinearGradient(x,y,x,y+bH);
+    grad.addColorStop(0,opts.accentColor);
+    grad.addColorStop(1,opts.barColor);
+    ctx.fillStyle=v>0?grad:'#2A2B3A44';
+    const r=Math.min(4,barW/2);
+    ctx.beginPath();
+    ctx.moveTo(x+r,y);ctx.lineTo(x+barW-r,y);
+    ctx.quadraticCurveTo(x+barW,y,x+barW,y+r);
+    ctx.lineTo(x+barW,y+bH);ctx.lineTo(x,y+bH);ctx.lineTo(x,y+r);
+    ctx.quadraticCurveTo(x,y,x+r,y);
+    ctx.closePath();ctx.fill();
+    ctx.shadowBlur=0;
+
+    // X label
+    if(opts.showLabels){
+      ctx.fillStyle=opts.textColor;
+      ctx.font=`${9*dpr/dpr}px -apple-system,sans-serif`;
+      ctx.textAlign='center';ctx.textBaseline='top';
+      const lbl=labels[i].split(' ')[0]; // first word only
+      ctx.fillText(lbl,x+barW/2,pad.t+cH+4);
+    }
+  });
+
+  // Tooltip on touch/click
+  let tooltipIdx=-1;
+  function drawTooltip(idx){
+    if(idx<0||idx>=n)return;
+    const x=pad.l+idx*gap+(gap-barW)/2;
+    const bH=cH*(vals[idx]/maxVal);
+    const y=pad.t+cH-bH;
+    const tx=Math.min(Math.max(x+barW/2,60),W-60);
+    const ty=Math.max(y-28,pad.t+2);
+    const txt=eur(vals[idx]);
+    ctx.font=`bold ${11*dpr/dpr}px -apple-system,sans-serif`;
+    const tw=ctx.measureText(txt).width+16;
+    ctx.fillStyle='#13141A';ctx.strokeStyle=opts.accentColor;ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.roundRect(tx-tw/2,ty,tw,20,5);ctx.fill();ctx.stroke();
+    ctx.fillStyle=opts.accentColor;ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(txt,tx,ty+10);
+    // date label
+    ctx.fillStyle=opts.textColor;ctx.font=`${9*dpr/dpr}px -apple-system,sans-serif`;
+    ctx.fillText(labels[idx],tx,ty+24);
+  }
+
+  function redraw(idx){
+    ctx.clearRect(0,0,W,H);
+    // redraw grid
+    ctx.strokeStyle=opts.gridColor;ctx.lineWidth=1;
+    for(let i=0;i<=steps;i++){
+      const y=pad.t+cH-(cH/steps)*i;
+      ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+cW,y);
+      ctx.globalAlpha=.4;ctx.stroke();ctx.globalAlpha=1;
+      const v=(maxVal/steps)*i;
+      ctx.fillStyle=opts.textColor;ctx.font=`${9}px monospace`;
+      ctx.textAlign='right';ctx.textBaseline='middle';
+      ctx.fillText(v>=1000?(v/1000).toFixed(1)+'k':v.toFixed(0),pad.l-4,y);
+    }
+    vals.forEach((v,i)=>{
+      const x=pad.l+i*gap+(gap-barW)/2;
+      const bH2=cH*(v/maxVal);
+      const y2=pad.t+cH-bH2;
+      ctx.shadowColor=opts.accentColor;ctx.shadowBlur=v>0&&i===idx?10:v>0?4:0;
+      const grad=ctx.createLinearGradient(x,y2,x,y2+bH2);
+      grad.addColorStop(0,i===idx?opts.accentColor:opts.accentColor+'cc');
+      grad.addColorStop(1,opts.barColor);
+      ctx.fillStyle=v>0?grad:'#2A2B3A44';
+      const r=Math.min(4,barW/2);
+      ctx.beginPath();
+      ctx.moveTo(x+r,y2);ctx.lineTo(x+barW-r,y2);
+      ctx.quadraticCurveTo(x+barW,y2,x+barW,y2+r);
+      ctx.lineTo(x+barW,y2+bH2);ctx.lineTo(x,y2+bH2);ctx.lineTo(x,y2+r);
+      ctx.quadraticCurveTo(x,y2,x+r,y2);ctx.closePath();ctx.fill();ctx.shadowBlur=0;
+      if(opts.showLabels){
+        ctx.fillStyle=opts.textColor;ctx.font=`9px -apple-system,sans-serif`;
+        ctx.textAlign='center';ctx.textBaseline='top';
+        ctx.fillText(labels[i].split(' ')[0],x+barW/2,pad.t+cH+4);
+      }
+    });
+    drawTooltip(idx);
+  }
+
+  function getIdx(clientX){
+    const r=canvas.getBoundingClientRect();
+    const mx=(clientX-r.left)*(W/r.width);
+    return Math.floor((mx-pad.l)/gap);
+  }
+
+  canvas.addEventListener('touchstart',e=>{e.preventDefault();const idx=getIdx(e.touches[0].clientX);tooltipIdx=idx;redraw(idx);},{passive:false});
+  canvas.addEventListener('touchmove',e=>{e.preventDefault();const idx=getIdx(e.touches[0].clientX);if(idx!==tooltipIdx){tooltipIdx=idx;redraw(idx);}},{passive:false});
+  canvas.addEventListener('touchend',()=>{setTimeout(()=>{tooltipIdx=-1;redraw(-1);},1500);});
+  canvas.addEventListener('mousemove',e=>{const idx=getIdx(e.clientX);if(idx!==tooltipIdx){tooltipIdx=idx;redraw(idx);}});
+  canvas.addEventListener('mouseleave',()=>{tooltipIdx=-1;redraw(-1);});
+
+  // Return destroy handle
+  return {destroy:()=>{canvas.replaceWith(canvas.cloneNode(false));}};
+}
+
 
 // ══════════════════════════════════════════════
 // LISTA DE FATURAS
@@ -11429,9 +11655,9 @@ function openPhotoForInvoice(invId){
 async function startCam(){
   stopCam();
   const v=document.getElementById('cam-video'),st=document.getElementById('cam-st');
-  // Resolução alta + foco contínuo desde o início
   const tries=[
-    {video:{facingMode:{exact:camFacing},width:{ideal:1920},height:{ideal:1080},focusMode:'continuous'}},
+    {video:{facingMode:{exact:camFacing},width:{ideal:3840},height:{ideal:2160}}},
+    {video:{facingMode:{exact:camFacing},width:{ideal:1920},height:{ideal:1080}}},
     {video:{facingMode:{exact:camFacing},width:{ideal:1280},height:{ideal:720}}},
     {video:{facingMode:camFacing}},
     {video:true}
@@ -11445,167 +11671,141 @@ async function startCam(){
   v.srcObject=camStream;
   await new Promise(r=>{v.onloadedmetadata=()=>r();});
   await v.play().catch(()=>{});
-  // Foco contínuo + exposição automática
   try{
     const track=camStream.getVideoTracks()[0];
-    await track.applyConstraints({advanced:[
-      {focusMode:'continuous'},{exposureMode:'continuous'},{whiteBalanceMode:'continuous'}
-    ]});
-  }catch(_){}
-  if(camMode==='qr'){
-    startQREngine();
-  }
+    const caps=track.getCapabilities()||{};
+    const adv=[];
+    if(caps.focusMode?.includes('continuous')) adv.push({focusMode:'continuous'});
+    if(caps.exposureMode?.includes('continuous')) adv.push({exposureMode:'continuous'});
+    if(caps.whiteBalanceMode?.includes('continuous')) adv.push({whiteBalanceMode:'continuous'});
+    if(caps.zoom) adv.push({zoom:1});
+    if(adv.length) await track.applyConstraints({advanced:adv});
+    const s=track.getSettings();
+    st.textContent=`📷 ${s.width||'?'}×${s.height||'?'} — pronto`;
+    setTimeout(()=>{if(st.textContent.includes('pronto'))st.textContent='📷 Aponte para o QR Code';},2000);
+  }catch(_){st.textContent='📷 A procurar QR Code...';}
+  if(camMode==='qr'||camMode==='sync-qr') startQREngine();
 }
 
-// ── Motor QR unificado: tenta ZXing → BarcodeDetector → jsQR ──
+// ── Motor QR unificado — optimizado para PAPEL IMPRESSO ──
+// Estratégia: jsQR com pré-processamento agressivo como primário,
+// BarcodeDetector como acelerador se disponível, ZXing como backup profundo
 function startQREngine(){
   const st=document.getElementById('cam-st');
-
-  // Modo sync-qr: usa BarcodeDetector ou jsQR simples
   if(camMode==='sync-qr'){
-    if(typeof BarcodeDetector!=='undefined'){
-      st.textContent='✅ Pronto para ler QR de sincronização';
-      qrBarcodeDetector(handleSyncQR);
-    } else {
-      st.textContent='📷 A procurar QR de sincronização...';
-      qrJsQRSimple(handleSyncQR);
-    }
+    if(typeof BarcodeDetector!=='undefined') qrBarcodeDetector(handleSyncQR);
+    else qrJsQRSimple(handleSyncQR);
     return;
   }
-
-  // Modo normal: ZXing é o motor principal
-  if(window.ZXing && window.ZXing.BrowserQRCodeReader){
-    st.innerHTML='✅ Motor ZXing activo';
-    startZXing();
-  } else if(typeof BarcodeDetector!=='undefined'){
+  // Para papel: jsQR com preprocessing é mais fiável que ZXing em papel escuro/sombra
+  // BarcodeDetector nativo do Android é o melhor para papel — usa primeiro
+  if(typeof BarcodeDetector!=='undefined'){
     st.innerHTML='✅ BarcodeDetector activo';
-    qrBarcodeDetector(raw=>{vib();captureFrameAndHandleQR(raw);});
+    qrBarcodeDetectorPaper();
   } else {
-    st.textContent='📷 A procurar QR (jsQR)...';
-    qrJsQREnhanced();
+    st.textContent='📷 A procurar QR Code...';
+    qrPaper();
   }
 }
 
-// ── MOTOR 1: ZXing (melhor para ecrãs) ──
-function startZXing(){
-  const v=document.getElementById('cam-video');
-  const c=document.getElementById('cam-canvas');
-  const ctx=c.getContext('2d',{willReadFrequently:true});
-  const st=document.getElementById('cam-st');
-  const hints=new Map();
-  // Activa todos os modos de tentativa — crucial para ecrãs
-  const ZX=window.ZXing;
-  hints.set(ZX.DecodeHintType.TRY_HARDER, true);
-  hints.set(ZX.DecodeHintType.PURE_BARCODE, false);
-  const reader=new ZX.BrowserQRCodeReader(hints);
-  let fails=0,zoomApplied=false;
-
-  async function tick(){
-    if(!camStream)return;
-    if(v.readyState===v.HAVE_ENOUGH_DATA){
-      c.width=v.videoWidth; c.height=v.videoHeight;
-      ctx.drawImage(v,0,0);
-      // ZXing tenta múltiplos processos internamente com TRY_HARDER
-      try{
-        const lum=new ZX.HTMLCanvasElementLuminanceSource(c);
-        const bmp=new ZX.HybridBinarizer(lum);
-        const bin=new ZX.BinaryBitmap(bmp);
-        const result=reader.decodeBitmap(bin);
-        if(result){vib();captureFrameAndHandleQR(result.getText());return;}
-      }catch(_){
-        // ZXing lança exceção quando não encontra — é normal
-        fails++;
-        // Após 3s sem resultado — tenta zoom
-        if(fails===20&&!zoomApplied){
-          zoomApplied=true;
-          try{
-            const track=camStream.getVideoTracks()[0];
-            const caps=track.getCapabilities();
-            if(caps.zoom&&caps.zoom.max>=2){
-              await track.applyConstraints({advanced:[{zoom:2}]});
-              st.textContent='🔍 Zoom 2× — aponte para o QR';
-            }
-          }catch(_){}
-        }
-        // Dicas após 5s
-        if(fails%30===0&&fails>0){
-          const tips=[
-            '💡 Reduz o brilho do monitor',
-            '📐 Aproxima a câmara ao ecrã',
-            '🔲 Centra bem o QR na moldura',
-            '↕ Experimenta um ângulo diferente',
-            '🖥 Aumenta o QR Code no monitor',
-          ];
-          st.textContent=tips[Math.floor(fails/30)%tips.length];
-        }
-      }
-    }
-    camAF=requestAnimationFrame(tick);
-  }
-  camAF=requestAnimationFrame(tick);
-}
-
-// ── MOTOR 2: BarcodeDetector nativo ──
-function qrBarcodeDetector(onResult){
+// ── MOTOR PRINCIPAL PAPEL: BarcodeDetector com intervalo curto ──
+function qrBarcodeDetectorPaper(){
   const v=document.getElementById('cam-video');
   const d=new BarcodeDetector({formats:['qr_code']});
-  let fails=0;
+  const st=document.getElementById('cam-st');
+  let fails=0, zoomed=false;
+
   async function tick(){
     if(!camStream)return;
     if(v.readyState===v.HAVE_ENOUGH_DATA){
       try{
         const codes=await d.detect(v);
-        if(codes.length){onResult(codes[0].rawValue);return;}
+        if(codes.length){vib();captureFrameAndHandleQR(codes[0].rawValue);return;}
         fails++;
-        if(fails%30===0&&fails>0&&camMode!=='sync-qr'){
-          const tips=['💡 Reduz o brilho do monitor','📐 Aproxima mais a câmara','🔲 Centra o QR na moldura','↕ Outro ângulo'];
-          document.getElementById('cam-st').textContent=tips[Math.floor(fails/30)%tips.length];
+        // Após 4s sem ler → activa zoom 2x (aproxima o QR)
+        if(fails===20&&!zoomed){
+          zoomed=true;
+          try{
+            const tk=camStream.getVideoTracks()[0];
+            const caps=tk.getCapabilities();
+            if(caps.zoom&&caps.zoom.max>=2){
+              await tk.applyConstraints({advanced:[{zoom:2}]});
+              st.textContent='🔍 Zoom 2× — aproxima a câmara do QR';
+              setTimeout(()=>zoomed&&(st.textContent='📷 A procurar QR...'),3000);
+            }
+          }catch(_){}
         }
-      }catch(_){}
+      }catch(_){fails++;}
     }
-    camAF=setTimeout(tick,100);
+    camAF=setTimeout(tick,80); // 80ms = ~12fps para papel
   }
   tick();
 }
 
-// ── MOTOR 3: jsQR com pré-processamento de imagem (fallback) ──
-function qrJsQREnhanced(){
-  const v=document.getElementById('cam-video'),c=document.getElementById('cam-canvas');
+// ── MOTOR PAPEL jsQR: múltiplos pré-processamentos por frame ──
+function qrPaper(){
+  const v=document.getElementById('cam-video');
+  const c=document.getElementById('cam-canvas');
   const ctx=c.getContext('2d',{willReadFrequently:true});
-  let last=0,attempts=0;
+  const st=document.getElementById('cam-st');
+  let last=0,fails=0,zoomed=false;
 
-  function tryDecode(src){
-    // Tentativa 1: original
-    let r=jsQR(src.data,src.width,src.height,{inversionAttempts:'attemptBoth'});
+  // Gera múltiplas versões da imagem e tenta cada uma
+  function tryAll(w,h,raw){
+    // 1. Original — funciona bem se iluminação boa
+    let r=jsQR(raw.data,w,h,{inversionAttempts:'attemptBoth'});
     if(r)return r;
-    // Tentativa 2: contraste aumentado (ecrãs com brilho alto)
-    r=jsQR(boostContrast(src).data,src.width,src.height,{inversionAttempts:'attemptBoth'});
-    if(r)return r;
-    // Tentativa 3: binarização Otsu (preto/branco puro)
-    r=jsQR(binarize(src).data,src.width,src.height,{inversionAttempts:'attemptBoth'});
-    if(r)return r;
-    // Tentativa 4: resolução reduzida
-    const s=shrink(src,0.5);
-    r=jsQR(s.data,s.width,s.height,{inversionAttempts:'attemptBoth'});
-    return r||null;
-  }
 
-  function boostContrast(src){
-    const d=new Uint8ClampedArray(src.data),f=1.9,ic=128*(1-f);
-    for(let i=0;i<d.length;i+=4){
-      const g=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2];
-      d[i]=d[i+1]=d[i+2]=Math.min(255,Math.max(0,f*g+ic));
+    // 2. Escala de cinza + contraste moderado (melhor para papel com sombras)
+    const d2=grayContrast(raw.data,w,h,1.5,0);
+    r=jsQR(d2,w,h,{inversionAttempts:'attemptBoth'});
+    if(r)return r;
+
+    // 3. Binarização Otsu — transforma em preto/branco puro
+    // Funciona bem para papel amassado ou com pouca luz
+    const d3=otsuBinarize(raw.data,w,h);
+    r=jsQR(d3,w,h,{inversionAttempts:'attemptBoth'});
+    if(r)return r;
+
+    // 4. Escala reduzida a 50% — melhora QR pequenos ou câmara longe
+    const small=downscale(c,ctx,v,0.5);
+    if(small){
+      r=jsQR(small.data,small.w,small.h,{inversionAttempts:'attemptBoth'});
+      if(r)return r;
     }
-    return new ImageData(d,src.width,src.height);
+
+    // 5. Contraste muito alto — papel com impressão fraca/desbotada
+    const d5=grayContrast(raw.data,w,h,2.5,-60);
+    r=jsQR(d5,w,h,{inversionAttempts:'attemptBoth'});
+    if(r)return r;
+
+    // 6. Inversão de cores — QR branco em fundo escuro (faturas com fundo colorido)
+    const d6=invert(raw.data,w,h);
+    r=jsQR(d6,w,h,{inversionAttempts:'dontInvert'});
+    if(r)return r;
+
+    return null;
   }
 
-  function binarize(src){
-    const d=new Uint8ClampedArray(src.data);
-    const hist=new Array(256).fill(0);
-    for(let i=0;i<d.length;i+=4) hist[~~(0.299*d[i]+0.587*d[i+1]+0.114*d[i+2])]++;
-    const total=src.width*src.height;
+  function grayContrast(data,w,h,factor,offset){
+    const out=new Uint8ClampedArray(data.length);
+    for(let i=0;i<data.length;i+=4){
+      const g=0.299*data[i]+0.587*data[i+1]+0.114*data[i+2];
+      const v=Math.min(255,Math.max(0,g*factor+offset));
+      out[i]=out[i+1]=out[i+2]=v; out[i+3]=255;
+    }
+    return out;
+  }
+
+  function otsuBinarize(data,w,h){
+    // Histograma de luminância
+    const hist=new Int32Array(256);
+    for(let i=0;i<data.length;i+=4)
+      hist[~~(0.299*data[i]+0.587*data[i+1]+0.114*data[i+2])]++;
+    // Threshold de Otsu
+    const total=w*h;
     let sum=0;for(let t=0;t<256;t++)sum+=t*hist[t];
-    let sB=0,wB=0,mx=0,th=128;
+    let sB=0,wB=0,mx=0,th=127;
     for(let t=0;t<256;t++){
       wB+=hist[t];if(!wB)continue;
       const wF=total-wB;if(!wF)break;
@@ -11613,33 +11813,51 @@ function qrJsQREnhanced(){
       const mB=sB/wB,mF=(sum-sB)/wF,b=wB*wF*(mB-mF)**2;
       if(b>mx){mx=b;th=t;}
     }
-    for(let i=0;i<d.length;i+=4){
-      const v=~~(0.299*d[i]+0.587*d[i+1]+0.114*d[i+2])>th?255:0;
-      d[i]=d[i+1]=d[i+2]=v;
+    const out=new Uint8ClampedArray(data.length);
+    for(let i=0;i<data.length;i+=4){
+      const g=~~(0.299*data[i]+0.587*data[i+1]+0.114*data[i+2]);
+      const v=g>th?255:0;
+      out[i]=out[i+1]=out[i+2]=v; out[i+3]=255;
     }
-    return new ImageData(d,src.width,src.height);
+    return out;
   }
 
-  function shrink(src,s){
-    const w=~~(src.width*s),h=~~(src.height*s);
-    const t=document.createElement('canvas');t.width=w;t.height=h;
-    const t2=document.createElement('canvas');t2.width=src.width;t2.height=src.height;
-    t2.getContext('2d').putImageData(src,0,0);
-    t.getContext('2d').drawImage(t2,0,0,w,h);
-    return t.getContext('2d').getImageData(0,0,w,h);
+  function invert(data,w,h){
+    const out=new Uint8ClampedArray(data.length);
+    for(let i=0;i<data.length;i+=4){
+      const g=0.299*data[i]+0.587*data[i+1]+0.114*data[i+2];
+      const v=255-g;
+      out[i]=out[i+1]=out[i+2]=v; out[i+3]=255;
+    }
+    return out;
   }
 
-  function tick(ts){
+  function downscale(canvas,ctx,video,scale){
+    try{
+      const sw=~~(video.videoWidth*scale),sh=~~(video.videoHeight*scale);
+      if(!sw||!sh)return null;
+      const tmp=document.createElement('canvas');tmp.width=sw;tmp.height=sh;
+      tmp.getContext('2d').drawImage(video,0,0,sw,sh);
+      const d=tmp.getContext('2d').getImageData(0,0,sw,sh);
+      return{data:d.data,w:sw,h:sh};
+    }catch(_){return null;}
+  }
+
+  async function tick(ts){
     if(!camStream)return;
-    if(ts-last>120&&v.readyState===v.HAVE_ENOUGH_DATA){
-      last=ts;c.width=v.videoWidth;c.height=v.videoHeight;
+    if(ts-last>100&&v.readyState===v.HAVE_ENOUGH_DATA){
+      last=ts;
+      c.width=v.videoWidth; c.height=v.videoHeight;
       ctx.drawImage(v,0,0);
-      const code=tryDecode(ctx.getImageData(0,0,c.width,c.height));
+      const raw=ctx.getImageData(0,0,c.width,c.height);
+      const code=tryAll(c.width,c.height,raw);
       if(code){vib();captureFrameAndHandleQR(code.data);return;}
-      attempts++;
-      if(attempts%25===0){
-        const tips=['💡 Reduz o brilho do monitor','📐 Aproxima mais a câmara','🔲 Centra o QR na moldura','↕ Outro ângulo'];
-        document.getElementById('cam-st').textContent=tips[~~(attempts/25)%tips.length];
+      fails++;
+      // Após 5s → sugere zoom
+      if(fails===50&&!zoomed){
+        zoomed=true;
+        st.textContent='📐 Aproxima mais a câmara do QR Code';
+        setTimeout(()=>{if(zoomed)st.textContent='📷 A procurar QR...';},3000);
       }
     }
     camAF=requestAnimationFrame(tick);
@@ -11647,11 +11865,23 @@ function qrJsQREnhanced(){
   camAF=requestAnimationFrame(tick);
 }
 
-// ── jsQR simples (para sync QR sem processamento) ──
+// ── Sincronização QR simples ──
+function qrBarcodeDetector(onResult){
+  const v=document.getElementById('cam-video');
+  const d=new BarcodeDetector({formats:['qr_code']});
+  async function tick(){
+    if(!camStream)return;
+    if(v.readyState===v.HAVE_ENOUGH_DATA){
+      try{const c=await d.detect(v);if(c.length){onResult(c[0].rawValue);return;}}catch(_){}
+    }
+    camAF=setTimeout(tick,120);
+  }
+  tick();
+}
+
 function qrJsQRSimple(onResult){
   const v=document.getElementById('cam-video'),c=document.getElementById('cam-canvas');
-  const ctx=c.getContext('2d',{willReadFrequently:true});
-  let last=0;
+  const ctx=c.getContext('2d',{willReadFrequently:true});let last=0;
   function tick(ts){
     if(!camStream)return;
     if(ts-last>200&&v.readyState===v.HAVE_ENOUGH_DATA){
@@ -11664,6 +11894,7 @@ function qrJsQRSimple(onResult){
   }
   camAF=requestAnimationFrame(tick);
 }
+
 
 function capturePhoto(){
   const v=document.getElementById('cam-video');
