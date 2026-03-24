@@ -1,6 +1,6 @@
 // ── SERVICE WORKER — Despesas PWA ──
 // Versão: incrementa este número sempre que fizeres upload de uma nova versão do FAT.html
-const VERSION = 'v3.0.0';
+const VERSION = 'v4.0.0';
 const CACHE   = 'despesas-' + VERSION;
 
 // Ficheiros a guardar em cache na instalação
