@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Política de Privacidade — FaturaApp</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --surface: #f8f8fc;
+    --border: #e8e8f0;
+    --text: #1a1a2e;
+    --muted: #6b6b8a;
+    --accent: #5B6EF5;
+    --accent2: #7C3AED;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f0f1a;
+      --surface: #1a1a2e;
+      --border: #2a2a44;
+      --text: #f0f0ff;
+      --muted: #8888aa;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.8;
+    font-size: 16px;
+  }
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 28px 24px;
+    text-align: center;
+  }
+  .logo-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 52px;
+    height: 52px;
+    background: #1a1a2e;
+    border-radius: 14px;
+    margin-bottom: 14px;
+  }
+  header h1 {
+    font-size: 22px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  header h1 span { color: var(--accent); }
+  header p {
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .container {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+  }
+  .last-updated {
+    display: inline-block;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 5px 14px;
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 36px;
+  }
+  section {
+    margin-bottom: 36px;
+    padding: 28px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+  }
+  section h2 {
+    font-size: 17px;
+    font-weight: 700;
+    margin-bottom: 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  section h2 .icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+  p { margin-bottom: 12px; color: var(--text); }
+  p:last-child { margin-bottom: 0; }
+  ul {
+    padding-left: 20px;
+    margin-bottom: 12px;
+  }
+  ul li {
+    margin-bottom: 6px;
+    color: var(--text);
+  }
+  .highlight {
+    background: #5B6EF511;
+    border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+    padding: 12px 16px;
+    margin: 14px 0;
+    font-size: 14px;
+    color: var(--muted);
+  }
+  .contact-box {
+    background: linear-gradient(135deg, #5B6EF511, #7C3AED11);
+    border: 1px solid #5B6EF533;
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+  }
+  .contact-box a {
+    color: var(--accent);
+    text-decoration: none;
+    font-weight: 600;
+  }
+  .contact-box a:hover { text-decoration: underline; }
+  footer {
+    text-align: center;
+    padding: 28px 24px;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--muted);
+  }
+  @media (max-width: 600px) {
+    .container { padding: 24px 16px 60px; }
+    section { padding: 20px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo-mark">
+    <svg width="30" height="30" viewBox="0 0 30 30" fill="none">
+      <rect x="5" y="3" width="16" height="22" rx="2" fill="#2a2a50"/>
+      <rect x="8" y="8" width="7" height="2" rx="1" fill="#5B6EF5"/>
+      <rect x="8" y="12" width="10" height="1.5" rx="0.75" fill="#3a3a70"/>
+      <rect x="8" y="15" width="8" height="1.5" rx="0.75" fill="#3a3a70"/>
+      <circle cx="22" cy="22" r="7" fill="#5B6EF5"/>
+      <text x="22" y="26" text-anchor="middle" font-size="9" font-weight="700" fill="white" font-family="system-ui">€</text>
+    </svg>
+  </div>
+  <h1>Fatura<span>App</span></h1>
+  <p>Política de Privacidade</p>
+</header>
+
+<div class="container">
+
+  <span class="last-updated">Última atualização: Janeiro de 2025</span>
+
+  <section>
+    <h2><span class="icon">📋</span>Introdução</h2>
+    <p>A presente Política de Privacidade descreve como a aplicação <strong>FaturaApp</strong> recolhe, utiliza e protege os dados dos seus utilizadores, em conformidade com o Regulamento Geral sobre a Proteção de Dados (RGPD — Regulamento UE 2016/679) e a legislação portuguesa aplicável.</p>
+    <p>Ao utilizar a FaturaApp, o utilizador aceita as práticas descritas nesta política. Recomendamos a leitura integral antes de utilizar a aplicação.</p>
+    <div class="highlight">O responsável pelo tratamento de dados é o titular da conta de negócio que utiliza a aplicação para gestão das suas faturas.</div>
+  </section>
+
+  <section>
+    <h2><span class="icon">📊</span>Dados recolhidos</h2>
+    <p>A FaturaApp recolhe e processa os seguintes dados para o correto funcionamento:</p>
+    <ul>
+      <li><strong>Dados de faturas:</strong> número de fatura, fornecedor, NIF do fornecedor, NIF do cliente, data, valor total, IVA, ATCUD e categoria</li>
+      <li><strong>Dados de câmara:</strong> acesso temporário à câmara do dispositivo para leitura de QR Code de faturas AT — as imagens não são armazenadas</li>
+      <li><strong>Dados de conta Google:</strong> quando utilizada a integração com Google Sheets, são utilizadas as credenciais de acesso à conta Google do utilizador</li>
+      <li><strong>Dados de configuração:</strong> nome do negócio, NIF da empresa, email do contabilista e preferências da aplicação</li>
+    </ul>
+    <p>A aplicação <strong>não recolhe</strong> dados de localização, dados biométricos, contactos do dispositivo nem informações de navegação.</p>
+  </section>
+
+  <section>
+    <h2><span class="icon">🎯</span>Finalidade do tratamento</h2>
+    <p>Os dados recolhidos são utilizados exclusivamente para:</p>
+    <ul>
+      <li>Registo e organização de faturas da empresa</li>
+      <li>Leitura automática de QR Code de faturas emitidas pela Autoridade Tributária portuguesa</li>
+      <li>Sincronização com Google Sheets para arquivo e partilha com o contabilista</li>
+      <li>Geração de relatórios e exportação em formato CSV</li>
+      <li>Cálculo de totais e IVA dedutível para efeitos contabilísticos</li>
+    </ul>
+    <p>Os dados <strong>não são utilizados</strong> para fins de marketing, publicidade, criação de perfis ou partilha com terceiros não identificados nesta política.</p>
+  </section>
+
+  <section>
+    <h2><span class="icon">💾</span>Armazenamento de dados</h2>
+    <p>Os dados das faturas são armazenados da seguinte forma:</p>
+    <ul>
+      <li><strong>Localmente no dispositivo:</strong> os dados são guardados na memória local (localStorage) do dispositivo, sem envio automático para servidores externos</li>
+      <li><strong>Google Sheets (opcional):</strong> quando o utilizador configura a integração, os dados são sincronizados com a folha de cálculo Google do utilizador, ficando sujeitos à Política de Privacidade da Google</li>
+      <li><strong>Google Apps Script:</strong> o backend da aplicação corre na infraestrutura Google, utilizando as credenciais e permissões configuradas pelo utilizador</li>
+    </ul>
+    <div class="highlight">Os dados armazenados localmente permanecem no dispositivo até o utilizador os eliminar ou desinstalar a aplicação. Não existe servidor próprio da FaturaApp que armazene dados dos utilizadores.</div>
+  </section>
+
+  <section>
+    <h2><span class="icon">📷</span>Permissões da aplicação</h2>
+    <p>A FaturaApp solicita as seguintes permissões no dispositivo Android:</p>
+    <ul>
+      <li><strong>Câmara:</strong> necessária para leitura de QR Code de faturas AT. O acesso é ativado apenas quando o utilizador abre a função de digitalização e é terminado imediatamente após a leitura. Nenhuma imagem é guardada.</li>
+      <li><strong>Internet:</strong> necessária para sincronização com Google Sheets e Google Apps Script quando configurado pelo utilizador.</li>
+    </ul>
+    <p>Todas as permissões são solicitadas de forma transparente e podem ser revogadas nas definições do dispositivo a qualquer momento.</p>
+  </section>
+
+  <section>
+    <h2><span class="icon">🤝</span>Partilha de dados com terceiros</h2>
+    <p>A FaturaApp partilha dados apenas com os seguintes terceiros, sempre por iniciativa e configuração do próprio utilizador:</p>
+    <ul>
+      <li><strong>Google LLC:</strong> quando o utilizador configura a integração com Google Sheets ou Google Apps Script. Sujeito à <a href="https://policies.google.com/privacy" target="_blank" style="color:var(--accent)">Política de Privacidade da Google</a>.</li>
+      <li><strong>Contabilista do utilizador:</strong> quando o utilizador utiliza a função de envio para contabilidade, os dados das faturas são enviados para o endereço de email configurado pelo próprio utilizador.</li>
+    </ul>
+    <p>A FaturaApp <strong>não vende, cede nem partilha</strong> dados com anunciantes, corretores de dados ou quaisquer outras entidades terceiras.</p>
+  </section>
+
+  <section>
+    <h2><span class="icon">🔒</span>Segurança dos dados</h2>
+    <p>A proteção dos dados é assegurada através das seguintes medidas:</p>
+    <ul>
+      <li>Os dados armazenados localmente estão protegidos pelo sistema de segurança do dispositivo Android</li>
+      <li>A comunicação com serviços Google é feita sempre através de HTTPS com encriptação TLS</li>
+      <li>As credenciais de acesso ao Google são geridas exclusivamente pelo sistema de autenticação OAuth da Google — a FaturaApp nunca tem acesso direto às passwords do utilizador</li>
+      <li>Não existe base de dados central da FaturaApp onde os dados dos utilizadores sejam armazenados</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2><span class="icon">⚖️</span>Direitos do utilizador (RGPD)</h2>
+    <p>Nos termos do RGPD, o utilizador tem os seguintes direitos relativamente aos seus dados:</p>
+    <ul>
+      <li><strong>Acesso:</strong> consultar os dados pessoais tratados</li>
+      <li><strong>Retificação:</strong> corrigir dados incorretos ou incompletos</li>
+      <li><strong>Eliminação:</strong> solicitar a eliminação dos dados ("direito ao esquecimento")</li>
+      <li><strong>Portabilidade:</strong> exportar os dados em formato CSV através da funcionalidade de exportação da aplicação</li>
+      <li><strong>Oposição:</strong> opor-se ao tratamento dos dados em determinadas circunstâncias</li>
+      <li><strong>Limitação:</strong> solicitar a limitação do tratamento dos dados</li>
+    </ul>
+    <p>Como os dados são armazenados localmente no dispositivo do utilizador, a maioria dos direitos pode ser exercida diretamente através da aplicação ou eliminando os dados do dispositivo.</p>
+    <p>Para questões relativas a dados sincronizados com serviços Google, o utilizador deve também contactar a Google diretamente.</p>
+  </section>
+
+  <section>
+    <h2><span class="icon">👶</span>Menores de idade</h2>
+    <p>A FaturaApp é destinada exclusivamente a uso empresarial e profissional, para maiores de 18 anos. A aplicação não recolhe conscientemente dados de menores de 16 anos. Se tomar conhecimento de que um menor forneceu dados, estes serão eliminados imediatamente após notificação.</p>
+  </section>
+
+  <section>
+    <h2><span class="icon">🔄</span>Alterações a esta política</h2>
+    <p>Esta política de privacidade pode ser atualizada periodicamente para refletir alterações na aplicação ou na legislação aplicável. As alterações serão comunicadas através de:</p>
+    <ul>
+      <li>Atualização da data "Última atualização" no topo desta página</li>
+      <li>Notificação na aplicação aquando de alterações significativas</li>
+      <li>Publicação da versão atualizada nesta página</li>
+    </ul>
+    <p>O uso continuado da aplicação após a publicação de alterações constitui aceitação das mesmas.</p>
+  </section>
+
+  <section>
+    <h2><span class="icon">✉️</span>Contacto</h2>
+    <div class="contact-box">
+      <p style="margin-bottom:10px">Para exercer os seus direitos ou colocar questões sobre privacidade, contacte:</p>
+      <p><strong>FaturaApp</strong></p>
+      <p><a href="mailto:geral@dontasko.pt">geral@dontasko.pt</a></p>
+      <p style="margin-top:10px;font-size:13px;color:var(--muted)">Responderemos no prazo máximo de 30 dias úteis.</p>
+    </div>
+  </section>
+
+</div>
+
+<footer>
+  <p>© 2025 FaturaApp · Todos os direitos reservados</p>
+  <p style="margin-top:6px">Esta política está em conformidade com o RGPD (Regulamento UE 2016/679) e a Lei n.º 58/2019</p>
+</footer>
+
+</body>
+</html>
