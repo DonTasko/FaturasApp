@@ -453,6 +453,30 @@ header{flex-shrink:0;padding:14px 16px 10px;display:flex;align-items:center;just
 </div>
 
 
+<!-- MODAL: Escolha após QR lido -->
+<div class="overlay" id="m-qr-choice">
+  <div class="sheet">
+    <div class="sh-handle"></div>
+    <div class="sh-hdr">
+      <h3>✅ QR Code lido</h3>
+      <button class="sh-close" onclick="closeSheet('m-qr-choice')">✕</button>
+    </div>
+    <div class="sh-body">
+      <p style="font-size:12px;color:var(--t3);margin-bottom:12px">Dados do QR Code AT extraídos com sucesso. O que pretende fazer a seguir?</p>
+      <div id="qr-choice-info"></div>
+      <div style="display:flex;flex-direction:column;gap:9px">
+        <button class="btn btn-prim" style="width:100%;padding:14px" onclick="qrChoicePhoto()">
+          📷 Fotografar fatura para ler artigos (OCR)
+        </button>
+        <button class="btn btn-ghost" style="width:100%" onclick="qrChoiceDirect()">
+          ✏️ Só usar dados do QR (sem artigos)
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
 <div id="toast" class="toast"></div>
 
 <script>(function webpackUniversalModuleDefinition(root, factory) {
@@ -10929,17 +10953,56 @@ function otsu(data,w,h){
   return out;
 }
 
+let _pendingQRData=null; // QR lido, aguarda foto
+
 function handleQR(raw){
   closeCam();
   const p=parseAT(raw);
-  // Opens invoice form pre-filled from QR
+  vib(200);
+  // Guarda dados do QR e pergunta se quer tirar foto para OCR dos artigos
+  _pendingQRData=p;
+  showQRPhotoChoice(p);
+}
+
+function showQRPhotoChoice(p){
+  document.getElementById('qr-choice-info').innerHTML=`
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:14px">
+      ${[['Fornecedor (NIF)',p.nif||'—'],['Cliente (NIF)',p.nifClient||'—'],
+         ['Nº Fatura',p.num||'—'],['Data',p.date||'—'],
+         ['Total',eur(p.total||0)],['IVA',eur(p.vat||0)]
+        ].map(([l,v])=>`<div style="background:var(--s2);border-radius:9px;padding:9px">
+          <div style="font-size:9px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:2px">${l}</div>
+          <div style="font-size:12px;font-weight:700;font-family:var(--mono)">${v}</div>
+        </div>`).join('')}
+    </div>`;
+  openSheet('m-qr-choice');
+}
+
+function qrChoicePhoto(){
+  // Fotografa a fatura para OCR dos artigos
+  closeSheet('m-qr-choice');
+  setTimeout(()=>{
+    camMode='ocr';
+    document.getElementById('cam-wrap').classList.add('on');
+    document.getElementById('cam-shutter').style.display='flex';
+    document.getElementById('cam-hint').textContent='Fotografe a fatura para ler os artigos';
+    document.getElementById('cam-st').textContent='QR lido ✓ — agora fotografe a fatura completa';
+    startCam();
+  },300);
+}
+
+function qrChoiceDirect(){
+  // Abre formulário só com dados do QR, sem foto
+  closeSheet('m-qr-choice');
+  const p=_pendingQRData||{};
   openInvoiceForm({
     num:p.num||'',nif:p.nif||'',nifClient:p.nifClient||config.nif||'',
     date:p.date||new Date().toISOString().slice(0,10),
     total:p.total||0,vat:p.vat||0,atcud:p.atcud||'',
     supplier:'',items:[],photo:null,source:'qr'
   });
-  toast('📷 QR lido! Complete os dados.');
+  toast('QR lido! Adicione os artigos manualmente.');
+  _pendingQRData=null;
 }
 
 function parseAT(raw){
@@ -10961,34 +11024,67 @@ async function captureAndOCR(){
   c.width=v.videoWidth;c.height=v.videoHeight;
   const ctx=c.getContext('2d');ctx.drawImage(v,0,0);
 
-  // Comprime para JPEG
-  const maxW=1600;let w=c.width,h=c.height;
-  if(w>maxW){h=Math.round(h*maxW/w);w=maxW;}
-  const c2=document.createElement('canvas');c2.width=w;c2.height=h;
-  c2.getContext('2d').drawImage(c,0,0,w,h);
-  const photoDataUrl=c2.toDataURL('image/jpeg',0.85);
+  // Tenta ler QR Code do frame capturado (se existir na fatura)
+  let qrData=null;
+  try{
+    if(typeof BarcodeDetector!=='undefined'){
+      const d=new BarcodeDetector({formats:['qr_code']});
+      const codes=await d.detect(v);
+      if(codes.length) qrData=parseAT(codes[0].rawValue);
+    } else {
+      const raw=ctx.getImageData(0,0,c.width,c.height);
+      const code=jsQR(raw.data,c.width,c.height,{inversionAttempts:'attemptBoth'});
+      if(code) qrData=parseAT(code.data);
+    }
+    if(qrData) console.log('QR detectado na foto:',qrData);
+  }catch(_){}
+
+  // Comprime para JPEG — resolução alta para OCR
+  const maxW=1800;let w=c.width,hh=c.height;
+  if(w>maxW){hh=Math.round(hh*maxW/w);w=maxW;}
+  const c2=document.createElement('canvas');c2.width=w;c2.height=hh;
+  c2.getContext('2d').drawImage(c,0,0,w,hh);
+  const photoDataUrl=c2.toDataURL('image/jpeg',0.90);
 
   closeCam();
   showOCRLoading(true);
-  toast('🧠 A analisar fatura com IA...', 30000);
+  toast('🧠 A analisar fatura com IA...', 40000);
 
   try{
-    const result=await callClaudeOCR(photoDataUrl);
+    // Use QR data from either the frame scan or the pre-scanned QR
+    const effectiveQR=qrData||_pendingQRData||null;
+    const result=await callClaudeOCR(photoDataUrl, effectiveQR);
+    _pendingQRData=null;
     showOCRLoading(false);
     if(result){
+      // Merge QR data (mais fiável) com OCR
+      if(effectiveQR){ const qrData=effectiveQR;
+        if(qrData.nif)       result.nif      = qrData.nif;
+        if(qrData.nifClient) result.nifClient = qrData.nifClient;
+        if(qrData.num)       result.num       = qrData.num;
+        if(qrData.date)      result.date      = qrData.date;
+        if(qrData.total)     result.total     = qrData.total;
+        if(qrData.vat)       result.vat       = qrData.vat;
+        if(qrData.atcud)     result.atcud     = qrData.atcud;
+      }
       result.photo=photoDataUrl;
       result.source='ocr';
+      if(!result.items||!result.items.length){
+        toast('⚠ IA não detectou artigos. Verifique a imagem e adicione manualmente.','err',5000);
+      } else {
+        toast(`✅ ${result.items.length} artigo(s) extraído(s)! Confirme os dados.`);
+      }
       openInvoiceForm(result);
-      toast('✅ Fatura analisada! Confirme os dados.');
     } else {
-      toast('⚠ Não foi possível extrair dados. Introduza manualmente.','err');
-      openInvoiceForm({photo:photoDataUrl,items:[],source:'manual'});
+      showOCRLoading(false);
+      toast('⚠ Não foi possível ler a fatura. Verifique a qualidade da foto.','err',5000);
+      openInvoiceForm({photo:photoDataUrl,items:[],source:'manual',...(qrData||{})});
     }
   }catch(e){
     showOCRLoading(false);
     console.error('OCR error:',e);
-    toast('⚠ Erro OCR. Introduza manualmente.','err');
-    openInvoiceForm({photo:photoDataUrl,items:[],source:'manual'});
+    toast('⚠ Erro ao analisar. Verifique a ligação à internet.','err',5000);
+    openInvoiceForm({photo:photoDataUrl,items:[],source:'manual',...(qrData||{})});
   }
 }
 
@@ -10999,58 +11095,85 @@ function showOCRLoading(show){
 }
 
 // ── Claude API para OCR ──
-async function callClaudeOCR(base64DataUrl){
+async function callClaudeOCR(base64DataUrl, qrData=null){
   const base64=base64DataUrl.split(',')[1];
+  const qrContext=qrData?`
+Dados já conhecidos do QR Code AT da fatura (usa estes valores onde aplicável):
+- NIF Fornecedor: ${qrData.nif||'desconhecido'}
+- NIF Cliente: ${qrData.nifClient||'desconhecido'}
+- Número: ${qrData.num||'desconhecido'}
+- Data: ${qrData.date||'desconhecida'}
+- Total: ${qrData.total||0}€
+- IVA: ${qrData.vat||0}€
+- ATCUD: ${qrData.atcud||'desconhecido'}
+`:'';
+
   const response=await fetch('https://api.anthropic.com/v1/messages',{
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({
       model:'claude-sonnet-4-20250514',
-      max_tokens:1500,
+      max_tokens:4000,
       messages:[{
         role:'user',
         content:[
-          {
-            type:'image',
-            source:{type:'base64',media_type:'image/jpeg',data:base64}
-          },
-          {
-            type:'text',
-            text:`Analisa esta fatura portuguesa e extrai os dados em JSON puro (sem markdown, sem \`\`\`).
-Formato exacto:
+          {type:'image',source:{type:'base64',media_type:'image/jpeg',data:base64}},
+          {type:'text',text:`Analisa esta fatura portuguesa e extrai TODOS os artigos/produtos listados.
+${qrContext}
+Responde APENAS com JSON puro (sem markdown, sem \`\`\`, sem texto antes ou depois).
+
+Formato obrigatório:
 {
-  "supplier": "nome do fornecedor",
-  "nif": "NIF do fornecedor (9 dígitos)",
-  "nifClient": "NIF do cliente (9 dígitos)",
-  "num": "número da fatura",
+  "supplier": "nome completo do fornecedor/empresa emissora",
+  "nif": "NIF de 9 dígitos do fornecedor",
+  "nifClient": "NIF de 9 dígitos do cliente",
+  "num": "número da fatura ex: FT 001/0123",
   "date": "YYYY-MM-DD",
   "total": 0.00,
   "vat": 0.00,
   "atcud": "código ATCUD se visível",
   "items": [
     {
-      "name": "nome do artigo",
-      "qty": 1,
-      "unit": "un/kg/L/cx",
+      "name": "nome descritivo do artigo (ex: Frango inteiro, Azeite virgem extra, Detergente loiça)",
+      "qty": 1.0,
+      "unit": "kg ou un ou L ou cx ou lt ou g ou dz",
       "unitPrice": 0.00,
       "totalPrice": 0.00,
-      "vatRate": 23
+      "vatRate": 6
     }
   ]
 }
-Se um campo não for visível, usa "" ou 0. Responde APENAS com o JSON, sem texto adicional.`
-          }
+
+INSTRUÇÕES CRÍTICAS:
+- Extrai TODOS os artigos da fatura, mesmo que sejam muitos
+- Para cada linha de produto na fatura cria um item separado
+- "name": usa o nome real do artigo conforme aparece na fatura, não abrevies
+- "qty": quantidade numérica (ex: 2.5 para 2,5 kg)
+- "unit": normaliza sempre para kg/un/L/cx/g/lt/dz
+- "unitPrice": preço por unidade/kg/litro
+- "totalPrice": qty × unitPrice
+- "vatRate": taxa de IVA em % (6, 13 ou 23)
+- Se um campo não for visível usa "" para texto ou 0 para números
+- Não incluas serviços, taxas, portes — apenas produtos/artigos`}
         ]
       }]
     })
   });
   const data=await response.json();
+  if(data.error){console.error('Claude API error:',data.error);return null;}
   const text=data.content?.[0]?.text||'';
+  console.log('OCR raw response:',text.slice(0,200));
   try{
-    const clean=text.replace(/```json|```/g,'').trim();
-    return JSON.parse(clean);
+    const clean=text.replace(/```json[\s\S]*?```|```[\s\S]*?```/g,m=>m.slice(m.indexOf('\n')+1,-3)).replace(/```/g,'').trim();
+    const parsed=JSON.parse(clean);
+    // Valida estrutura mínima
+    if(!parsed.items) parsed.items=[];
+    return parsed;
   }catch(e){
-    console.warn('OCR parse error:',text);
+    console.warn('OCR parse error:',e.message,'\nRaw:',text.slice(0,500));
+    // Tenta extrair JSON mesmo que haja texto à volta
+    const m=text.match(/\{[\s\S]*\}/);
+    if(m){try{return JSON.parse(m[0]);}catch(_){}}
     return null;
   }
 }
@@ -11085,15 +11208,49 @@ function openInvoiceForm(data){
     ['IVA (€)','fi-vat','number',data?.vat||'',''],
     ['ATCUD','fi-atcud','text',data?.atcud||'','full'],
   ];
-  document.getElementById('inv-form-fields').innerHTML=
-    (data?.photo?`<div class="fi full" style="margin-bottom:4px"><div style="border-radius:11px;overflow:hidden;border:1px solid var(--b);max-height:160px"><img src="${data.photo}" style="width:100%;object-fit:cover;display:block;max-height:160px"></div></div>`:'')
-    +fields.map(([lbl,id,type,val,span])=>`<div class="fi ${span}"><label>${lbl}</label><input type="${type}" id="${id}" value="${val}" ${type==='number'?'step="0.01" inputmode="decimal"':''}></div>`).join('');
 
-  if(data?.photo) document.getElementById('inv-form-fields').dataset.photo=data.photo;
+  // Foto sempre visível e expandível para confirmar dados OCR
+  const photoSection=data?.photo?`
+    <div class="fi full" style="margin-bottom:8px">
+      <label>FOTO DA FATURA ${data.source==='ocr'?'<span style="color:var(--acc);font-size:9px">✓ OCR</span>':data.source==='qr'?'<span style="color:var(--blue);font-size:9px">✓ QR</span>':''}</label>
+      <div style="position:relative;border-radius:11px;overflow:hidden;border:1px solid var(--b)" id="photo-thumb-wrap">
+        <img id="form-photo-thumb" src="${data.photo}" style="width:100%;display:block;max-height:180px;object-fit:cover;cursor:zoom-in" onclick="expandPhoto()" title="Toque para ampliar">
+        <div style="position:absolute;bottom:6px;right:6px;background:rgba(0,0,0,.6);border-radius:6px;padding:3px 7px;font-size:10px;color:#fff;pointer-events:none">🔍 ampliar</div>
+      </div>
+    </div>`:'';
+
+  document.getElementById('inv-form-fields').innerHTML=
+    photoSection+
+    fields.map(([lbl,id,type,val,span])=>`<div class="fi ${span}"><label>${lbl}</label><input type="${type}" id="${id}" value="${val}" ${type==='number'?'step="0.01" inputmode="decimal"':''}></div>`).join('');
+
+  if(data?.photo){
+    document.getElementById('inv-form-fields').dataset.photo=data.photo;
+    window._currentFormPhoto=data.photo;
+  } else {
+    window._currentFormPhoto=null;
+  }
 
   renderFormItems();
   document.getElementById('save-inv-btn').onclick=saveInvoice;
   openSheet('m-invoice');
+}
+
+// Expande foto a ecrã completo para confirmar dados OCR
+function expandPhoto(){
+  const photo=window._currentFormPhoto;
+  if(!photo) return;
+  const overlay=document.createElement('div');
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.95);z-index:500;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px';
+  overlay.innerHTML=`
+    <div style="position:absolute;top:16px;right:16px;display:flex;gap:8px;z-index:1">
+      <button style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.2);color:#fff;padding:8px 14px;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer" onclick="this.closest('div[style*=fixed]').remove()">✕ Fechar</button>
+    </div>
+    <p style="color:rgba(255,255,255,.6);font-size:11px;margin-bottom:10px;text-align:center">Toque na imagem para fazer zoom · Deslize para mover</p>
+    <div style="width:100%;max-width:480px;overflow:auto;border-radius:12px;max-height:80vh">
+      <img src="${photo}" style="width:100%;display:block;touch-action:pinch-zoom">
+    </div>`;
+  overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.remove();});
+  document.body.appendChild(overlay);
 }
 
 function renderFormItems(){
