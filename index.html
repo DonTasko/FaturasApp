@@ -162,8 +162,9 @@ header{flex-shrink:0;padding:14px 16px 10px;display:flex;align-items:center;just
     <h1>Stock<span>Scan</span></h1>
   </div>
   <div class="hdr-right">
-    <div class="icon-btn" onclick="importData()" title="Importar">⬆</div>
-    <div class="icon-btn" onclick="exportData()" title="Exportar">⬇</div>
+    <div class="icon-btn" onclick="openImportFile()" title="Importar PDF/Imagem">📂</div>
+    <div class="icon-btn" onclick="importData()" title="Importar JSON">⬆</div>
+    <div class="icon-btn" onclick="exportData()" title="Exportar JSON">⬇</div>
     <div class="icon-btn" onclick="openOCRScan()" title="Digitalizar fatura">📷</div>
   </div>
 </header>
@@ -239,8 +240,12 @@ header{flex-shrink:0;padding:14px 16px 10px;display:flex;align-items:center;just
         <button class="btn btn-ghost" style="flex:0;padding:8px 13px;font-size:12px" onclick="exportData()">⬇ Export</button>
       </div>
       <div class="set-row">
-        <div class="set-info"><p>Importar dados</p><span>Merge de outro dispositivo</span></div>
-        <button class="btn btn-ghost" style="flex:0;padding:8px 13px;font-size:12px" onclick="importData()">⬆ Import</button>
+        <div class="set-info"><p>Importar dados JSON</p><span>Sincronização entre dispositivos</span></div>
+        <button class="btn btn-ghost" style="flex:0;padding:8px 13px;font-size:12px" onclick="importData()">⬆ JSON</button>
+      </div>
+      <div class="set-row">
+        <div class="set-info"><p>Importar PDF / Imagem</p><span>OCR automático com IA</span></div>
+        <button class="btn btn-ghost" style="flex:0;padding:8px 13px;font-size:12px" onclick="openImportFile()">📂 Ficheiros</button>
       </div>
       <div class="set-row">
         <div class="set-info"><p style="color:var(--red)">Apagar todos os dados</p><span>Acção irreversível</span></div>
@@ -424,6 +429,29 @@ header{flex-shrink:0;padding:14px 16px 10px;display:flex;align-items:center;just
     </div>
   </div>
 </div>
+
+<!-- MODAL: Revisão de Importação -->
+<div class="overlay" id="m-import-review">
+  <div class="sheet" style="max-height:96vh">
+    <div class="sh-handle"></div>
+    <div class="sh-hdr">
+      <h3>📂 Rever Importação</h3>
+      <button class="sh-close" onclick="closeSheet('m-import-review')">✕</button>
+    </div>
+    <div class="sh-body">
+      <div id="ir-summary"></div>
+      <div style="background:var(--blue-dim);border:1px solid #60A5FA22;border-radius:11px;padding:11px 13px;margin-bottom:12px;font-size:11px;color:var(--blue);line-height:1.6">
+        <b>ℹ Sobre o matching:</b> artigos com similaridade ≥90% são associados automaticamente. Entre 75-90% podes confirmar ou criar novo. Usa o dropdown para decidir por artigo.
+      </div>
+      <div id="ir-invoices"></div>
+    </div>
+    <div class="sh-footer" style="position:sticky;bottom:0;background:var(--s1);padding:12px 16px;border-top:1px solid var(--b)">
+      <button class="btn btn-ghost" onclick="closeSheet('m-import-review')">Cancelar</button>
+      <button class="btn btn-prim" onclick="confirmImport()">✓ Confirmar e Guardar</button>
+    </div>
+  </div>
+</div>
+
 
 <div id="toast" class="toast"></div>
 
@@ -11155,6 +11183,346 @@ function setItemFam(itemId,famId,el){
   setTimeout(()=>closeSheet('m-fampicker'),300);
 }
 
+// ══════════════════════════════════════════════════════
+// FUZZY MATCHING DE ARTIGOS
+// ══════════════════════════════════════════════════════
+
+// Normaliza texto para comparação: remove acentos, plural, unidades comuns
+function normalizeArtName(s){
+  return s.toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')  // remove acentos
+    .replace(/\b(kg|kgs|quilo|quilos|kilos|kilo|litro|litros|litro|lt|lts|un|und|unid|unidade|unidades|cx|caixa|caixas|pct|pacote|pacotes|saco|sacos|gr|grs|gramas|grama)\b/g,' ')
+    .replace(/\s+/g,' ').trim();
+}
+
+// Distância de Levenshtein (edição de strings)
+function levenshtein(a,b){
+  const m=a.length,n=b.length;
+  const dp=Array.from({length:m+1},(_,i)=>Array.from({length:n+1},(_,j)=>i===0?j:j===0?i:0));
+  for(let i=1;i<=m;i++)
+    for(let j=1;j<=n;j++)
+      dp[i][j]=a[i-1]===b[j-1]?dp[i-1][j-1]:1+Math.min(dp[i-1][j],dp[i][j-1],dp[i-1][j-1]);
+  return dp[m][n];
+}
+
+// Score de semelhança 0-1 entre dois nomes
+function artSimilarity(a,b){
+  const na=normalizeArtName(a);
+  const nb=normalizeArtName(b);
+  if(na===nb) return 1.0;
+  // Contém um ao outro
+  if(na.includes(nb)||nb.includes(na)) return 0.85;
+  // Palavras em comum
+  const wa=new Set(na.split(' ').filter(w=>w.length>2));
+  const wb=new Set(nb.split(' ').filter(w=>w.length>2));
+  const common=[...wa].filter(w=>wb.has(w)).length;
+  if(common>0&&(common/Math.max(wa.size,wb.size,1))>0.5) return 0.75;
+  // Levenshtein normalizado
+  const maxLen=Math.max(na.length,nb.length,1);
+  const lev=levenshtein(na,nb);
+  const levScore=1-(lev/maxLen);
+  return levScore;
+}
+
+// Encontra artigo existente mais próximo (retorna {art, score} ou null)
+function findBestMatch(name, threshold=0.70){
+  if(!articles.length) return null;
+  let best=null, bestScore=0;
+  articles.forEach(a=>{
+    const s=artSimilarity(name, a.name);
+    if(s>bestScore){bestScore=s;best=a;}
+  });
+  if(bestScore>=threshold) return {art:best, score:bestScore};
+  return null;
+}
+
+// ══════════════════════════════════════════════════════
+// IMPORTAR PDF / IMAGEM com OCR
+// ══════════════════════════════════════════════════════
+
+function openImportFile(){
+  const inp=document.createElement('input');
+  inp.type='file';
+  inp.accept='.pdf,.jpg,.jpeg,.png,.webp,.heic,image/*,application/pdf';
+  inp.multiple=true;
+  inp.onchange=e=>handleImportFiles(Array.from(e.target.files));
+  inp.click();
+}
+
+async function handleImportFiles(files){
+  if(!files.length) return;
+  const valid=files.filter(f=>{
+    const ext=f.name.split('.').pop().toLowerCase();
+    return ['pdf','jpg','jpeg','png','webp','heic'].includes(ext)||f.type.startsWith('image/')||f.type==='application/pdf';
+  });
+  if(!valid.length){toast('⚠ Formato não suportado. Use PDF ou imagem.','err');return;}
+  toast(`⏳ A processar ${valid.length} ficheiro(s)...`,30000);
+  showOCRLoading(true);
+  document.getElementById('ocr-loading').querySelector('p').innerHTML=
+    `🧠 A analisar ${valid.length} fatura(s) com IA...<br><span style="font-size:12px;color:var(--t3);font-weight:400">Pode demorar alguns segundos</span>`;
+
+  const results=[];
+  for(const file of valid){
+    try{
+      const dataUrl=await fileToDataUrl(file);
+      const ext=file.name.split('.').pop().toLowerCase();
+      let imgDataUrl=dataUrl;
+      // PDF → converte primeira página a imagem via canvas
+      if(ext==='pdf'||file.type==='application/pdf'){
+        imgDataUrl=await pdfToImageDataUrl(dataUrl);
+        if(!imgDataUrl){toast(`⚠ Não foi possível converter ${file.name}`,'err');continue;}
+      }
+      const result=await callClaudeOCR(imgDataUrl);
+      if(result){
+        result.photo=imgDataUrl;
+        result.source='import';
+        result._filename=file.name;
+        results.push(result);
+      } else {
+        results.push({_filename:file.name,_failed:true,photo:imgDataUrl,items:[],source:'import'});
+      }
+    }catch(e){
+      console.error('Import error:',file.name,e);
+      results.push({_filename:file.name,_failed:true,items:[],source:'import'});
+    }
+  }
+  showOCRLoading(false);
+  if(!results.length){toast('❌ Nenhuma fatura reconhecida','err');return;}
+  // Abre modal de revisão com correspondências fuzzy
+  openImportReview(results);
+}
+
+function fileToDataUrl(file){
+  return new Promise((res,rej)=>{
+    const reader=new FileReader();
+    reader.onload=e=>res(e.target.result);
+    reader.onerror=rej;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function pdfToImageDataUrl(pdfDataUrl){
+  try{
+    // Carrega pdf.js dinamicamente
+    if(!window.pdfjsLib){
+      await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
+      if(window['pdfjs-dist/build/pdf'])
+        window['pdfjs-dist/build/pdf'].GlobalWorkerOptions.workerSrc=
+          'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      window.pdfjsLib=window['pdfjs-dist/build/pdf'];
+    }
+    if(!window.pdfjsLib) return null;
+    const data=pdfDataUrl.split(',')[1];
+    const binary=atob(data);
+    const bytes=new Uint8Array(binary.length);
+    for(let i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);
+    const pdf=await window.pdfjsLib.getDocument({data:bytes}).promise;
+    const page=await pdf.getPage(1);
+    const vp=page.getViewport({scale:2.0}); // escala 2x para melhor OCR
+    const canvas=document.createElement('canvas');
+    canvas.width=vp.width; canvas.height=vp.height;
+    await page.render({canvasContext:canvas.getContext('2d'),viewport:vp}).promise;
+    // Comprime
+    const maxW=1600; let w=canvas.width,h=canvas.height;
+    if(w>maxW){h=Math.round(h*maxW/w);w=maxW;}
+    const c2=document.createElement('canvas');c2.width=w;c2.height=h;
+    c2.getContext('2d').drawImage(canvas,0,0,w,h);
+    return c2.toDataURL('image/jpeg',0.88);
+  }catch(e){
+    console.warn('PDF convert error:',e);
+    return null;
+  }
+}
+
+function loadScript(src){
+  return new Promise((res,rej)=>{
+    if(document.querySelector(`script[src="${src}"]`)){res();return;}
+    const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=rej;
+    document.head.appendChild(s);
+  });
+}
+
+// ══════════════════════════════════════════════════════
+// MODAL DE REVISÃO DE IMPORTAÇÃO
+// ══════════════════════════════════════════════════════
+let importBatch=[];  // faturas a confirmar
+let importItemMatches=[];  // {item, match:{art,score}|null, action:'new'|'merge'|'skip', selectedArtId}
+
+function openImportReview(results){
+  importBatch=results;
+  importItemMatches=[];
+
+  // Para cada item de cada fatura, faz fuzzy match
+  results.forEach((inv,ii)=>{
+    (inv.items||[]).forEach((item,ji)=>{
+      if(!item.name) return;
+      const match=findBestMatch(item.name);
+      importItemMatches.push({
+        invIdx:ii, itemIdx:ji, item,
+        match,  // null ou {art, score}
+        action: match ? (match.score>=0.90?'merge':'confirm') : 'new',
+        // 'merge'=associa automaticamente, 'confirm'=mostra ao utilizador, 'new'=cria novo
+      });
+    });
+  });
+
+  renderImportReview();
+  openSheet('m-import-review');
+}
+
+function renderImportReview(){
+  const total=importBatch.length;
+  const itemCount=importItemMatches.length;
+  const autoMerge=importItemMatches.filter(m=>m.action==='merge').length;
+  const needConfirm=importItemMatches.filter(m=>m.action==='confirm').length;
+  const newItems=importItemMatches.filter(m=>m.action==='new').length;
+
+  document.getElementById('ir-summary').innerHTML=`
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
+      <div style="background:var(--s2);border-radius:10px;padding:10px;text-align:center">
+        <div style="font-size:18px;font-weight:800;font-family:var(--mono)">${total}</div>
+        <div style="font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.6px">Faturas</div>
+      </div>
+      <div style="background:var(--s2);border-radius:10px;padding:10px;text-align:center">
+        <div style="font-size:18px;font-weight:800;font-family:var(--mono)">${autoMerge}</div>
+        <div style="font-size:9px;color:var(--acc);text-transform:uppercase;letter-spacing:.6px">Auto-match</div>
+      </div>
+      <div style="background:var(--s2);border-radius:10px;padding:10px;text-align:center">
+        <div style="font-size:18px;font-weight:800;font-family:var(--mono)">${needConfirm+newItems}</div>
+        <div style="font-size:9px;color:var(--warn);text-transform:uppercase;letter-spacing:.6px">A rever</div>
+      </div>
+    </div>`;
+
+  // Faturas
+  document.getElementById('ir-invoices').innerHTML=importBatch.map((inv,i)=>`
+    <div style="background:var(--s2);border:1px solid var(--b);border-radius:12px;padding:12px;margin-bottom:8px">
+      <div style="display:flex;align-items:center;gap:9px;margin-bottom:8px">
+        ${inv.photo?`<img src="${inv.photo}" style="width:48px;height:48px;border-radius:8px;object-fit:cover;flex-shrink:0">`:`<div style="width:48px;height:48px;border-radius:8px;background:var(--s3);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">${inv._failed?'❌':'🧾'}</div>`}
+        <div style="flex:1;min-width:0">
+          <p style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${inv.supplier||inv._filename||'Fatura '+(i+1)}</p>
+          <p style="font-size:10px;color:var(--t3);font-family:var(--mono)">${inv.num||'—'} · ${inv.date||'—'} · ${eur(inv.total||0)}</p>
+        </div>
+        ${inv._failed?`<span style="font-size:10px;color:var(--red);font-weight:700">Falhou</span>`:`<span style="font-size:10px;color:var(--acc);font-weight:700">${(inv.items||[]).length} artigos</span>`}
+      </div>
+      ${!inv._failed&&(inv.items||[]).length?renderImportItems(i):''}
+    </div>`).join('');
+}
+
+function renderImportItems(invIdx){
+  const matches=importItemMatches.filter(m=>m.invIdx===invIdx);
+  if(!matches.length) return '';
+  return`<div style="border-top:1px solid var(--b);padding-top:8px">
+    ${matches.map((m,mi)=>{
+      const globalIdx=importItemMatches.indexOf(m);
+      const fam=m.match?famById(m.match.art.famId):{name:'Novo',icon:'📦',color:'#888'};
+      const scoreColor=m.match?(m.match.score>=0.9?'var(--acc)':m.match.score>=0.75?'var(--warn)':'var(--red)'):'var(--t3)';
+      return`<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--b)">
+        <div style="flex:1;min-width:0">
+          <p style="font-size:12px;font-weight:700">${m.item.name}</p>
+          <p style="font-size:10px;color:var(--t3);font-family:var(--mono)">${m.item.qty||1} ${m.item.unit||'un'} · ${eur(m.item.unitPrice||0)}</p>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          ${m.match?`
+            <p style="font-size:10px;font-weight:700;color:${scoreColor}">${Math.round(m.match.score*100)}% match</p>
+            <p style="font-size:9px;color:var(--t3);max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.match.art.name}</p>
+          `:`<p style="font-size:10px;color:var(--t3)">Novo artigo</p>`}
+        </div>
+        <select class="ir-action-sel" style="background:var(--s3);border:1px solid var(--b);border-radius:8px;color:var(--t);font-size:11px;padding:4px 6px;max-width:80px;font-family:var(--sans)"
+          data-idx="${globalIdx}" onchange="setImportAction(${globalIdx},this.value)">
+          ${m.match?`<option value="merge" ${m.action==='merge'||m.action==='confirm'?'selected':''}>Associar</option>`:''}
+          <option value="new" ${m.action==='new'?'selected':''}>Criar novo</option>
+          <option value="skip">Ignorar</option>
+        </select>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+function setImportAction(idx,val){
+  if(importItemMatches[idx]) importItemMatches[idx].action=val;
+}
+
+async function confirmImport(){
+  closeSheet('m-import-review');
+  toast('💾 A guardar faturas...', 5000);
+
+  let savedInv=0, savedArt=0, priceAlerts=[];
+
+  for(const inv of importBatch){
+    if(inv._failed) continue;
+    const invId=uid();
+    const processedItems=[];
+
+    // Process each item
+    const myMatches=importItemMatches.filter(m=>m.invIdx===importBatch.indexOf(inv));
+    for(const m of myMatches){
+      if(m.action==='skip') continue;
+      const item={...m.item, id:uid()};
+      let art=null;
+
+      if(m.action==='merge'||m.action==='confirm'){
+        // Usa artigo existente
+        art=m.match?.art||null;
+      }
+      if(!art||m.action==='new'){
+        // Verifica duplicado exacto antes de criar
+        const exact=articles.find(a=>normalizeArtName(a.name)===normalizeArtName(item.name));
+        if(exact){ art=exact; }
+        else {
+          art={id:uid(),name:item.name,famId:item.famId||'',unit:item.unit||'un',prices:[],ean:''};
+          articles.push(art);
+          savedArt++;
+        }
+      }
+
+      if(art&&item.unitPrice){
+        // Alerta de preço?
+        if(art.prices.length>0){
+          const last=art.prices[art.prices.length-1];
+          const change=((item.unitPrice-last.price)/last.price)*100;
+          const threshold=config.alertPct||10;
+          if(Math.abs(change)>=threshold){
+            const alertObj={
+              id:uid(),artId:art.id,artName:art.name,
+              oldPrice:last.price,newPrice:item.unitPrice,
+              pctChange:change,dir:change>0?'up':'down',
+              date:inv.date||new Date().toISOString().slice(0,10),
+              invId,resolved:false
+            };
+            alerts.unshift(alertObj);
+            priceAlerts.push(alertObj);
+          }
+        }
+        art.prices.push({date:inv.date||new Date().toISOString().slice(0,10),price:item.unitPrice,qty:item.qty||1,invId});
+      }
+      item.famId=art?.famId||'';
+      processedItems.push(item);
+    }
+
+    const newInv={
+      id:invId,supplier:inv.supplier||'',nif:inv.nif||'',
+      num:inv.num||'IMP/'+invId.slice(-6),
+      date:inv.date||new Date().toISOString().slice(0,10),
+      total:inv.total||0,vat:inv.vat||0,atcud:inv.atcud||'',
+      photo:inv.photo||null,items:processedItems,
+      status:'pendente',createdAt:new Date().toISOString(),source:'import'
+    };
+    invoices.unshift(newInv);
+    savedInv++;
+  }
+
+  persist();
+  renderDash();renderInvoiceList();renderArticleList();renderAlerts();
+
+  toast(`✅ ${savedInv} fatura(s) importada(s) · ${savedArt} artigo(s) novos`);
+  if(priceAlerts.length>0){
+    setTimeout(()=>openPriceAlertModal(priceAlerts.map(a=>({name:a.artName,change:a.pctChange,oldPrice:a.oldPrice,newPrice:a.newPrice}))),600);
+  }
+
+  importBatch=[];importItemMatches=[];
+}
+
+
 async function saveInvoice(){
   const g=id=>document.getElementById(id)?.value?.trim()||'';
   const photo=document.getElementById('inv-form-fields')?.dataset?.photo||null;
@@ -11171,16 +11539,25 @@ async function saveInvoice(){
   const priceAlertMessages=[];
   inv.items.forEach(item=>{
     if(!item.name||!item.unitPrice)return;
-    // Find existing article by name (fuzzy)
-    let art=articles.find(a=>a.name.toLowerCase()===item.name.toLowerCase());
-    if(!art){
-      // Create new article
-      art={id:uid(),name:item.name,famId:item.famId||'',unit:item.unit||'un',prices:[],ean:''};
-      articles.push(art);
+    // Fuzzy match artigo existente
+    let art=null;
+    const fm=findBestMatch(item.name, 0.75);
+    if(fm&&fm.score>=0.90){
+      // Match automático — muito semelhante
+      art=fm.art;
+    } else if(fm&&fm.score>=0.75){
+      // Match parcial — usa na mesma mas mantém nome original se diferente
+      art=fm.art;
     } else {
-      // Update family if not set
-      if(!art.famId&&item.famId)art.famId=item.famId;
+      // Verifica exacto normalizado
+      const exact=articles.find(a=>normalizeArtName(a.name)===normalizeArtName(item.name));
+      if(exact){ art=exact; }
+      else {
+        art={id:uid(),name:item.name,famId:item.famId||'',unit:item.unit||'un',prices:[],ean:''};
+        articles.push(art);
+      }
     }
+    if(art&&!art.famId&&item.famId) art.famId=item.famId;
     // Check price change
     if(art.prices.length>0){
       const lastEntry=art.prices[art.prices.length-1];
@@ -11617,6 +11994,7 @@ function downloadBlob(blob){
 }
 
 function importData(){
+  // JSON sync file
   const inp=document.createElement('input');inp.type='file';inp.accept='.json,application/json';
   inp.onchange=e=>{
     const file=e.target.files[0];if(!file)return;
@@ -11625,24 +12003,12 @@ function importData(){
       try{
         const data=JSON.parse(ev.target.result);
         if(!data.invoices)throw new Error('Formato inválido');
-        // Merge
         let added=0;
-        data.invoices.forEach(inc=>{
-          if(!invoices.find(i=>i.id===inc.id)){invoices.push(inc);added++;}
-        });
-        data.articles?.forEach(inc=>{
-          if(!articles.find(a=>a.id===inc.id))articles.push(inc);
-        });
-        data.families?.forEach(inc=>{
-          if(!families.find(f=>f.id===inc.id))families.push(inc);
-        });
-        data.alerts?.forEach(inc=>{
-          if(!alerts.find(a=>a.id===inc.id))alerts.push(inc);
-        });
-        if(data.config){
-          if(!config.biz&&data.config.biz)config.biz=data.config.biz;
-          if(!config.nif&&data.config.nif)config.nif=data.config.nif;
-        }
+        data.invoices.forEach(inc=>{if(!invoices.find(i=>i.id===inc.id)){invoices.push(inc);added++;}});
+        data.articles?.forEach(inc=>{if(!articles.find(a=>a.id===inc.id))articles.push(inc);});
+        data.families?.forEach(inc=>{if(!families.find(f=>f.id===inc.id))families.push(inc);});
+        data.alerts?.forEach(inc=>{if(!alerts.find(a=>a.id===inc.id))alerts.push(inc);});
+        if(data.config){if(!config.biz&&data.config.biz)config.biz=data.config.biz;if(!config.nif&&data.config.nif)config.nif=data.config.nif;}
         persist();renderDash();renderInvoiceList();renderArticleList();
         toast(`✅ Importado: +${added} faturas`);
       }catch(err){toast('❌ Ficheiro inválido: '+err.message,'err');}
