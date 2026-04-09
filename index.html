@@ -1,234 +1,255 @@
 <!DOCTYPE html>
 <html lang="pt">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>StockScan Free OCR</title>
-    
-    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>StockScan Pro + OCR</title>
 
-    <style>
-        /* CSS INTEGRAL PRESERVADO */
-        *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-        :root{
-            --bg:#0C0D10;--s1:#13141A;--s2:#1B1C24;--s3:#22232E;
-            --b:#2A2B3A;--b2:#383A4E;
-            --t:#ECEDF5;--t2:#9496B0;--t3:#55566E;
-            --acc:#4ADE80;--acc2:#22C55E;--acc-dim:#4ADE8015;--acc-glow:#4ADE8040;
-            --warn:#FACC15;--red:#F87171;--sans:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-        }
-        body{background:var(--bg);color:var(--t);font-family:var(--sans);display:flex;flex-direction:column;height:100vh;max-width:480px;margin:0 auto;overflow:hidden}
-        
-        header{padding:14px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--b)}
-        .logo{display:flex;align-items:center;gap:9px}
-        .logo-box{width:32px;height:32px;background:var(--acc);border-radius:9px;display:flex;align-items:center;justify-content:center}
-        
-        .main{flex:1;overflow-y:auto;padding:15px;padding-bottom:100px}
-        .page{display:none;flex-direction:column;gap:12px}
-        .page.on{display:flex}
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
-        /* Botões e Inputs */
-        .btn{padding:12px;border-radius:12px;border:none;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px}
-        .btn-prim{background:var(--acc);color:#000}
-        .btn-ghost{background:var(--s2);color:var(--t);border:1px solid var(--b)}
-        
-        .card{background:var(--s1);border:1px solid var(--b);border-radius:14px;padding:13px;margin-bottom:10px}
-        
-        /* Camera UI */
-        #cam-wrap{position:fixed;inset:0;background:#000;z-index:200;display:none;flex-direction:column}
-        #cam-wrap.on{display:flex}
-        #cam-video{width:100%;height:70%;object-fit:cover}
-        .cam-controls{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:15px;background:var(--bg)}
-
-        /* Loading */
-        #loading{position:fixed;inset:0;background:rgba(0,0,0,0.9);display:none;flex-direction:column;align-items:center;justify-content:center;z-index:1000}
-        .spinner{width:40px;height:40px;border:4px solid var(--b);border-top-color:var(--acc);border-radius:50%;animation:spin 1s linear infinite}
-        @keyframes spin{to{transform:rotate(360deg)}}
-
-        /* Bot Nav */
-        nav{position:fixed;bottom:0;width:100%;max-width:480px;display:flex;background:var(--s1);border-top:1px solid var(--b);padding-bottom:env(safe-area-inset-bottom)}
-        .bn{flex:1;padding:12px;text-align:center;background:none;border:none;color:var(--t3);font-size:10px;font-weight:bold}
-        .bn.on{color:var(--acc)}
-    </style>
+<style>
+/* CSS ORIGINAL PRESERVADO [cite: 307, 308, 309] */
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+:root{
+  --bg:#0C0D10;--s1:#13141A;--s2:#1B1C24;--s3:#22232E;
+  --b:#2A2B3A;--b2:#383A4E;
+  --t:#ECEDF5;--t2:#9496B0;--t3:#55566E;
+  --acc:#4ADE80;--acc2:#22C55E;--acc-dim:#4ADE8015;--acc-glow:#4ADE8040;
+  --warn:#FACC15;--warn-dim:#FACC1512;
+  --red:#F87171;--red-dim:#F8717112;
+  --blue:#60A5FA;--blue-dim:#60A5FA12;
+  --purple:#C084FC;--purple-dim:#C084FC12;
+  --mono:monospace;--sans:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+html,body{height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--t);font-family:var(--sans);display:flex;flex-direction:column;max-width:480px;margin:0 auto}
+header{flex-shrink:0;padding:14px 16px 10px;display:flex;align-items:center;justify-content:space-between;background:var(--bg);border-bottom:1px solid var(--b);z-index:30}
+.logo{display:flex;align-items:center;gap:9px}
+.logo-box{width:32px;height:32px;background:var(--acc);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 0 16px var(--acc-glow);flex-shrink:0}
+.logo h1{font-size:16px;font-weight:800;letter-spacing:-.4px}
+.logo h1 span{color:var(--acc)}
+.hdr-right{display:flex;gap:7px}
+.icon-btn{width:34px;height:34px;border-radius:9px;background:var(--s2);border:1px solid var(--b);color:var(--t2);font-size:15px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
+.main{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding-bottom:80px}
+.bot-nav{flex-shrink:0;display:flex;background:var(--s1);border-top:1px solid var(--b);padding-bottom:env(safe-area-inset-bottom)}
+.bn{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:10px 4px 8px;background:none;border:none;cursor:pointer;color:var(--t3);font-family:var(--sans);transition:.12s}
+.bn.on{color:var(--acc)}
+.bn-ic{font-size:18px;line-height:1}
+.bn-lbl{font-size:9px;font-weight:700;letter-spacing:.4px}
+.page{display:none;padding:14px 14px 6px;flex-direction:column;gap:11px;animation:fadein .2s ease}
+.page.on{display:flex}
+@keyframes fadein{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.stat{background:var(--s1);border:1px solid var(--b);border-radius:14px;padding:13px;position:relative;overflow:hidden}
+.stat-val{font-size:19px;font-weight:800;font-family:var(--mono);letter-spacing:-1px;line-height:1}
+.card{background:var(--s1);border:1px solid var(--b);border-radius:14px;padding:13px}
+.card-title{font-size:10px;font-weight:700;color:var(--t3);letter-spacing:.8px;text-transform:uppercase;margin-bottom:10px}
+.exp-item{background:var(--s1);border:1px solid var(--b);border-radius:14px;padding:12px 13px;display:flex;align-items:center;gap:10px;cursor:pointer}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.chip{padding:5px 11px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;border:1.5px solid var(--b);color:var(--t3);background:var(--s2)}
+.chip.on{border-color:var(--acc);background:var(--acc-dim);color:var(--acc)}
+.srch{display:flex;align-items:center;gap:8px;background:var(--s1);border:1px solid var(--b);border-radius:11px;padding:9px 12px;margin-bottom:12px}
+.srch input{background:none;border:none;outline:none;color:var(--t);font-size:13px;flex:1}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.82);backdrop-filter:blur(5px);z-index:100;display:none;align-items:flex-end;justify-content:center}
+.overlay.on{display:flex}
+.sheet{background:var(--s1);border:1px solid var(--b);border-radius:22px 22px 0 0;width:100%;max-width:480px;max-height:94vh;overflow-y:auto;padding-bottom:calc(env(safe-area-inset-bottom)+16px)}
+/* Estilos Camera [cite: 317] */
+#cam-wrap{position:fixed;inset:0;background:#000;z-index:200;display:none;flex-direction:column}
+#cam-wrap.on{display:flex}
+#cam-video{width:100%;height:65%;object-fit:cover}
+.cam-controls{flex:1;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:15px}
+/* Loading OCR [cite: 318] */
+#ocr-loading{position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:1000;display:none;flex-direction:column;align-items:center;justify-content:center}
+.ocr-spin{width:50px;height:50px;border:5px solid var(--b);border-top-color:var(--acc);border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
 </head>
 <body>
 
 <header>
-    <div class="logo"><div class="logo-box">📦</div><h1>Stock<span>Scan</span></h1></div>
-    <div style="display:flex;gap:8px">
-        <button class="btn btn-ghost" onclick="openImportFile()">📂</button>
-        <button class="btn btn-prim" onclick="openCam()">📷</button>
-    </div>
+  <div class="logo"><div class="logo-box">📦</div><h1>Stock<span>Scan</span></h1></div>
+  <div class="hdr-right">
+    <div class="icon-btn" onclick="openImportFile()">📂</div>
+    <div class="icon-btn" onclick="openOCRScan()">📷</div>
+  </div>
 </header>
 
-<div class="main">
-    <div id="p-dash" class="page on">
-        <div class="card">
-            <h3>Bem-vindo</h3>
-            <p style="color:var(--t2);font-size:13px">Digitalize uma fatura para começar.</p>
-        </div>
-        <button class="btn btn-prim" onclick="openCam()" style="width:100%">📷 Digitalizar Agora</button>
-        <button class="btn btn-ghost" onclick="openImportFile()" style="width:100%">🖼️ Escolher da Galeria</button>
-        
-        <div class="card" style="margin-top:20px">
-            <h4>Resumo Recente</h4>
-            <div id="summary-list" style="font-size:12px;margin-top:10px">Nenhum dado guardado.</div>
-        </div>
+<div class="main" id="main-scroll">
+  <div class="page on" id="p-dash">
+    <div class="stat-grid" id="stat-grid"></div>
+    <div id="dash-scan-btn" style="margin-top:10px"></div>
+    <div class="card" style="margin-top:10px">
+      <div class="card-title">Top Artigos</div>
+      <div id="dash-top-art"></div>
     </div>
+  </div>
+
+  <div class="page" id="p-inv">
+    <div class="srch">🔍 <input type="text" id="inv-srch" placeholder="Procurar faturas..." oninput="renderInvoiceList()"></div>
+    <div class="chips" id="inv-filter-chips"></div>
+    <div class="gap8" id="inv-list"></div>
+  </div>
+
+  <div class="page" id="p-art">
+    <div class="srch">🔍 <input type="text" id="art-srch" placeholder="Nome do artigo..." oninput="renderArticleList()"></div>
+    <div class="chips" id="art-filter-chips"></div>
+    <div class="gap8" id="art-list"></div>
+  </div>
 </div>
 
-<nav>
-    <button class="bn on" onclick="showPage('dash')">INÍCIO</button>
-    <button class="bn" onclick="showPage('inv')">FATURAS</button>
-    <button class="bn" onclick="showPage('art')">ARTIGOS</button>
+<nav class="bot-nav">
+  <button class="bn on" id="bn-dash" onclick="goPage('dash',this)"><span class="bn-ic">◎</span><span class="bn-lbl">Início</span></button>
+  <button class="bn" id="bn-inv" onclick="goPage('inv',this)"><span class="bn-ic">🧾</span><span class="bn-lbl">Faturas</span></button>
+  <button class="bn" id="bn-art" onclick="goPage('art',this)"><span class="bn-ic">📦</span><span class="bn-lbl">Artigos</span></button>
 </nav>
 
 <div id="cam-wrap">
-    <video id="cam-video" autoplay playsinline></video>
-    <canvas id="cam-canvas" style="display:none"></canvas>
+    <video id="cam-video" autoplay playsinline muted></video>
     <div class="cam-controls">
         <p id="cam-msg">Aponte para o QR Code ou tire foto</p>
-        <button class="btn btn-prim" style="width:80px;height:80px;border-radius:50%" onclick="capturePhoto()">📸</button>
-        <button class="btn btn-ghost" onclick="closeCam()">Fechar</button>
+        <button class="icon-btn" style="width:70px;height:70px;border-radius:50%;font-size:24px" onclick="capturePhoto()">📸</button>
+        <button class="chip" onclick="closeCam()">Fechar</button>
     </div>
 </div>
 
-<div id="loading">
-    <div class="spinner"></div>
-    <p style="margin-top:15px" id="load-msg">A processar imagem...</p>
+<div id="ocr-loading">
+    <div class="ocr-spin"></div>
+    <p style="margin-top:15px">A ler artigos com IA...</p>
 </div>
 
 <script>
-    // --- ESTADO ---
-    let stream = null;
-    let invoices = JSON.parse(localStorage.getItem('ss_inv') || '[]');
+// ══════════════════════════════════════════════════════
+// ESTADO E LÓGICA CORE [cite: 201, 202, 203]
+// ══════════════════════════════════════════════════════
+const LS = {
+    get: k => JSON.parse(localStorage.getItem(k)) || [],
+    set: (k, v) => localStorage.setItem(k, JSON.stringify(v))
+};
 
-    function showPage(p) {
-        document.querySelectorAll('.page').forEach(el => el.classList.remove('on'));
-        document.getElementById('p-' + p).classList.add('on');
+let invoices = LS.get('ss_inv');
+let articles = LS.get('ss_art');
+let families = [ {id:'f1',name:'Geral',icon:'📦',color:'#4ADE80'} ];
+
+function persist() {
+    LS.set('ss_inv', invoices);
+    LS.set('ss_art', articles);
+}
+
+// ── NAVEGAÇÃO ──
+function goPage(id, btn) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('on'));
+    document.getElementById('p-' + id).classList.add('on');
+    document.querySelectorAll('.bn').forEach(b => b.classList.remove('on'));
+    if(btn) btn.classList.add('on');
+    if(id === 'dash') renderDash();
+    if(id === 'inv') renderInvoiceList();
+    if(id === 'art') renderArticleList();
+}
+
+// ── DASHBOARD [cite: 208, 210] ──
+function renderDash() {
+    const tot = invoices.reduce((a, i) => a + (+i.total || 0), 0);
+    document.getElementById('stat-grid').innerHTML = `
+        <div class="stat"><div class="stat-lbl">Total Gasto</div><div class="stat-val">${tot.toFixed(2)}€</div></div>
+        <div class="stat"><div class="stat-lbl">Artigos</div><div class="stat-val">${articles.length}</div></div>
+    `;
+    document.getElementById('dash-scan-btn').innerHTML = `
+        <button class="btn-prim" onclick="openOCRScan()" style="width:100%;padding:15px;border-radius:12px;background:var(--acc);font-weight:bold">📷 Digitalizar Agora</button>
+    `;
+}
+
+// ══════════════════════════════════════════════════════
+// NOVO MOTOR OCR (TESSERACT.JS) [cite: 318]
+// ══════════════════════════════════════════════════════
+let stream = null;
+
+async function openOCRScan() {
+    document.getElementById('cam-wrap').classList.add('on');
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+    document.getElementById('cam-video').srcObject = stream;
+}
+
+function closeCam() {
+    if(stream) stream.getTracks().forEach(t => t.stop());
+    document.getElementById('cam-wrap').classList.remove('on');
+}
+
+async function capturePhoto() {
+    const video = document.getElementById('cam-video');
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+    const dataUrl = canvas.toDataURL('image/jpeg');
+    closeCam();
+    runOCR(dataUrl);
+}
+
+async function runOCR(image) {
+    document.getElementById('ocr-loading').style.display = 'flex';
+    try {
+        const result = await Tesseract.recognize(image, 'por');
+        parseOCRText(result.data.text);
+    } catch (e) {
+        alert("Erro no OCR: " + e.message);
+    } finally {
+        document.getElementById('ocr-loading').style.display = 'none';
     }
+}
 
-    // --- CÂMARA ---
-    async function openCam() {
-        document.getElementById('cam-wrap').classList.add('on');
-        try {
-            stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: "environment" } 
+// ── LEITURA DE ARTIGOS (O QUE FALTAVA) ──
+function parseOCRText(text) {
+    console.log("Texto extraído:", text);
+    const lines = text.split('\n');
+    let newItems = [];
+    
+    // Regex simples para capturar "Nome" e "Preço" (ex: "FRANGO 5.40")
+    lines.forEach(line => {
+        const match = line.match(/(.*?)\s+(\d+[.,]\d{2})/);
+        if(match) {
+            newItems.push({
+                id: Date.now() + Math.random(),
+                name: match[1].trim(),
+                price: parseFloat(match[2].replace(',', '.'))
             });
-            document.getElementById('cam-video').srcObject = stream;
-            scanQRCode(); // Inicia scanner de QR em background
-        } catch (err) {
-            alert("Erro ao abrir câmara: " + err);
-            closeCam();
         }
-    }
+    });
 
-    function closeCam() {
-        if(stream) stream.getTracks().forEach(t => t.stop());
-        document.getElementById('cam-wrap').classList.remove('on');
-    }
-
-    // --- LEITOR QR CODE (JSQR) ---
-    function scanQRCode() {
-        if(!stream) return;
-        const video = document.getElementById('cam-video');
-        const canvas = document.getElementById('cam-canvas');
-        const ctx = canvas.getContext('2d');
-
-        if(video.readyState === video.HAVE_ENOUGH_DATA) {
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            ctx.drawImage(video, 0, 0);
-            const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const code = jsQR(imgData.data, imgData.width, imgData.height);
-
-            if(code) {
-                processRawData(code.data, "QR Code");
-                closeCam();
-                return;
+    if(newItems.length > 0) {
+        const total = newItems.reduce((a, b) => a + b.price, 0);
+        const inv = { id: Date.now(), date: new Date().toLocaleDateString(), total, items: newItems };
+        invoices.push(inv);
+        
+        // Sincronizar com lista de artigos global
+        newItems.forEach(ni => {
+            if(!articles.find(a => a.name === ni.name)) {
+                articles.push({ name: ni.name, lastPrice: ni.price });
             }
-        }
-        requestAnimationFrame(scanQRCode);
-    }
-
-    // --- IMPORTAÇÃO DE FICHEIROS ---
-    function openImportFile() {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = 'image/*';
-        input.onchange = (e) => {
-            const file = e.target.files[0];
-            const reader = new FileReader();
-            reader.onload = (re) => processOCR(re.target.result);
-            reader.readAsDataURL(file);
-        };
-        input.click();
-    }
-
-    function capturePhoto() {
-        const video = document.getElementById('cam-video');
-        const canvas = document.getElementById('cam-canvas');
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        canvas.getContext('2d').drawImage(video, 0, 0);
-        const dataUrl = canvas.toDataURL('image/jpeg');
-        closeCam();
-        processOCR(dataUrl);
-    }
-
-    // --- MOTOR OCR GRATUITO (TESSERACT.JS) ---
-    async function processOCR(imageData) {
-        const load = document.getElementById('loading');
-        const msg = document.getElementById('load-msg');
-        load.style.display = 'flex';
-        msg.innerText = "IA a ler texto (pode demorar)...";
-
-        try {
-            // Tesseract processa em Português
-            const result = await Tesseract.recognize(imageData, 'por');
-            processRawData(result.data.text, "OCR");
-        } catch (err) {
-            alert("Erro no OCR: " + err);
-        } finally {
-            load.style.display = 'none';
-        }
-    }
-
-    // --- PARSER DE DADOS ---
-    function processRawData(text, source) {
-        console.log("Dados extraídos:", text);
+        });
         
-        // Lógica simples de extração de valores (RegEx)
-        const totalMatch = text.match(/(TOTAL|VALOR|A PAGAR).*?(\d+[.,]\d{2})/i);
-        const nifMatch = text.match(/[59]\d{8}/); // NIFs em PT começam por 5 ou 9
-        
-        const info = {
-            id: Date.now(),
-            date: new Date().toLocaleDateString(),
-            total: totalMatch ? totalMatch[2] : "0.00",
-            nif: nifMatch ? nifMatch[0] : "Desconhecido",
-            source: source
-        };
-
-        invoices.push(info);
-        localStorage.setItem('ss_inv', JSON.stringify(invoices));
-        updateUI();
-        alert(`Sucesso! Detetado Total: ${info.total}€ via ${source}`);
+        persist();
+        renderDash();
+        alert(`Lidos ${newItems.length} artigos! Total: ${total.toFixed(2)}€`);
+    } else {
+        alert("Não foi possível detetar artigos. Tente uma foto mais nítida.");
     }
+}
 
-    function updateUI() {
-        const list = document.getElementById('summary-list');
-        if(invoices.length === 0) return;
-        list.innerHTML = invoices.slice(-3).reverse().map(inv => `
-            <div style="border-bottom:1px solid #222; padding:5px 0">
-                <b>${inv.date}</b> - ${inv.total}€ (NIF: ${inv.nif})
-            </div>
-        `).join('');
-    }
+// ── IMPORTAÇÃO DE FICHEIROS ──
+function openImportFile() {
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'image/*';
+    inp.onchange = e => {
+        const reader = new FileReader();
+        reader.onload = r => runOCR(r.target.result);
+        reader.readAsDataURL(e.target.files[0]);
+    };
+    inp.click();
+}
 
-    window.onload = updateUI;
+window.onload = () => { renderDash(); };
+
 </script>
-
 </body>
 </html>
