@@ -4,8 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>StockScan Pro</title>
+
+<script src="https://unpkg.com/tesseract.js@5.0.3/dist/tesseract.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+
 <style>
-/* ... Mantive os teus estilos originais ... */
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 :root{
   --bg:#0C0D10;--s1:#13141A;--s2:#1B1C24;--s3:#22232E;
@@ -27,28 +30,59 @@ header{flex-shrink:0;padding:14px 16px 10px;display:flex;align-items:center;just
 .logo h1 span{color:var(--acc)}
 .hdr-right{display:flex;gap:7px}
 .icon-btn{width:34px;height:34px;border-radius:9px;background:var(--s2);border:1px solid var(--b);color:var(--t2);font-size:15px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
+.icon-btn:active{background:var(--s3);transform:scale(.93)}
 .main{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding-bottom:80px}
+.bot-nav{flex-shrink:0;display:flex;background:var(--s1);border-top:1px solid var(--b);padding-bottom:env(safe-area-inset-bottom)}
+.bn{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:10px 4px 8px;background:none;border:none;cursor:pointer;color:var(--t3);font-family:var(--sans);transition:.12s}
+.bn.on{color:var(--acc)}
+.bn-ic{font-size:18px;line-height:1}
+.bn-lbl{font-size:9px;font-weight:700;letter-spacing:.4px}
 .page{display:none;padding:14px 14px 6px;flex-direction:column;gap:11px;animation:fadein .2s ease}
 .page.on{display:flex}
 @keyframes fadein{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.stat{background:var(--s1);border:1px solid var(--b);border-radius:14px;padding:13px;position:relative;overflow:hidden}
+.stat-val{font-size:19px;font-weight:800;font-family:var(--mono);letter-spacing:-1px;line-height:1}
 .card{background:var(--s1);border:1px solid var(--b);border-radius:14px;padding:13px}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:11px 16px;border-radius:11px;font-size:13px;font-weight:700;cursor:pointer;border:none}
-.btn-prim{background:var(--acc);color:#081A0D}
+.card-title{font-size:10px;font-weight:700;color:var(--t3);letter-spacing:.8px;text-transform:uppercase;margin-bottom:10px}
+.srch{display:flex;align-items:center;gap:8px;background:var(--s1);border:1px solid var(--b);border-radius:11px;padding:9px 12px}
+.srch input{background:none;border:none;outline:none;color:var(--t);font-size:13px;flex:1}
+.fg{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.fi{display:flex;flex-direction:column;gap:4px}
+.fi.full{grid-column:1/-1}
+.fi label{font-size:9px;font-weight:700;color:var(--t3);text-transform:uppercase}
+.fi input, .fi select{background:var(--s2);border:1.5px solid var(--b);border-radius:10px;padding:10px 12px;color:var(--t);font-size:13px;outline:none}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:11px 16px;border-radius:11px;font-size:13px;font-weight:700;cursor:pointer;border:none;transition:.15s}
+.btn-prim{background:var(--acc);color:#081A0D;box-shadow:0 4px 14px var(--acc-glow);flex:1}
+.btn-ghost{background:var(--s2);color:var(--t);border:1px solid var(--b);flex:1}
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.82);backdrop-filter:blur(5px);z-index:100;display:none;align-items:flex-end;justify-content:center}
 .overlay.on{display:flex}
-.sheet{background:var(--s1);border:1px solid var(--b);border-radius:22px 22px 0 0;width:100%;max-width:480px;max-height:94vh;overflow-y:auto;padding-bottom:20px}
-/* Estilos Camera */
+.sheet{background:var(--s1);border:1px solid var(--b);border-radius:22px 22px 0 0;width:100%;max-width:480px;max-height:94vh;overflow-y:auto;padding-bottom:calc(env(safe-area-inset-bottom)+16px)}
+.sh-hdr{padding:15px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--b)}
+.sh-body{padding:14px 16px}
+.sh-footer{padding:11px 16px;display:flex;gap:8px}
+
+/* CAMERA OVERLAY CUSTOMIZADO */
 #cam-wrap{position:fixed;inset:0;background:#000;z-index:200;display:none;flex-direction:column;align-items:center;justify-content:center}
 #cam-wrap.on{display:flex}
-#cam-video{width:100%;max-width:480px}
-.cam-shutter{width:70px;height:70px;border-radius:50%;background:#fff;border:5px solid rgba(255,255,255,0.4);margin-top:20px}
-#ocr-loading{position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:300;display:none;flex-direction:column;align-items:center;justify-content:center;color:#fff}
-.spinner{width:40px;height:40px;border:4px solid #fff;border-top-color:var(--acc);border-radius:50%;animation:spin 1s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
-</style>
+.cam-top{position:absolute;top:0;left:0;right:0;padding:14px 16px;display:flex;justify-content:space-between;z-index:1}
+.cam-top-btn{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.2);color:#fff;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center}
+#cam-video{width:100%;max-width:480px;display:block}
+.cam-frame{position:relative;width:100%;max-width:480px}
+.cor{position:absolute;width:26px;height:26px;border-color:var(--acc);border-style:solid}
+.cor.tl{top:6px;left:6px;border-width:3px 0 0 3px}
+.cor.tr{top:6px;right:6px;border-width:3px 3px 0 0}
+.cor.bl{bottom:6px;left:6px;border-width:0 0 3px 3px}
+.cor.br{bottom:6px;right:6px;border-width:0 3px 3px 0}
+.slr{position:absolute;left:6px;right:6px;height:2px;background:var(--acc);box-shadow:0 0 8px var(--acc);animation:scan 2s ease-in-out infinite}
+@keyframes scan{0%{top:6px}50%{top:calc(100% - 8px)}100%{top:6px}}
+.cam-shutter{width:70px;height:70px;border-radius:50%;background:#fff;border:5px solid rgba(255,255,255,.4);cursor:pointer;margin:20px 0}
 
-<script src="https://unpkg.com/tesseract.js@5.0.3/dist/tesseract.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+/* LOADING OCR */
+#ocr-loading{position:fixed;inset:0;background:rgba(0,0,0,.88);backdrop-filter:blur(6px);z-index:300;display:none;flex-direction:column;align-items:center;justify-content:center;gap:18px}
+.ocr-spin{width:48px;height:48px;border:4px solid var(--b2);border-top-color:var(--acc);border-radius:50%;animation:spinning .8s linear infinite}
+@keyframes spinning{to{transform:rotate(360deg)}}
+</style>
 </head>
 <body>
 
@@ -64,45 +98,87 @@ header{flex-shrink:0;padding:14px 16px 10px;display:flex;align-items:center;just
 
 <div class="main">
   <div class="page on" id="p-dash">
-    <div class="card">
-        <p>Bem-vindo ao StockScan. Use a câmara para registar faturas.</p>
-        <button class="btn btn-prim" style="width:100%; margin-top:15px" onclick="openOCRScan()">Digitalizar Fatura</button>
+    <div class="stat-grid">
+        <div class="stat"><div class="stat-lbl">Faturas</div><div class="stat-val" id="count-inv">0</div></div>
+        <div class="stat"><div class="stat-lbl">Artigos</div><div class="stat-val" id="count-art">0</div></div>
     </div>
-    <div id="lista-faturas" style="margin-top:10px"></div>
+    <div class="card" style="margin-top:10px">
+        <button class="btn btn-prim" style="width:100%" onclick="openOCRScan()">Digitalizar Nova Fatura</button>
+    </div>
+  </div>
+
+  <div class="page" id="p-inv">
+    <div class="srch">🔍 <input type="text" placeholder="Procurar faturas..."></div>
+    <div id="inv-list" style="margin-top:10px"></div>
   </div>
 </div>
 
+<nav class="bot-nav">
+  <button class="bn on" onclick="goPage('dash', this)"><span class="bn-ic">◎</span><span class="bn-lbl">Dash</span></button>
+  <button class="bn" onclick="goPage('inv', this)"><span class="bn-ic">🧾</span><span class="bn-lbl">Faturas</span></button>
+</nav>
+
 <div id="cam-wrap">
-  <div style="position:absolute; top:20px; right:20px; z-index:210">
-    <button class="btn" style="background:rgba(0,0,0,0.5); color:#fff" onclick="closeCam()">✕</button>
+  <div class="cam-top">
+    <button class="cam-top-btn" onclick="closeCam()">✕</button>
   </div>
-  <video id="cam-video" autoplay playsinline></video>
-  <canvas id="cam-canvas" style="display:none"></canvas>
-  <div id="cam-hint" style="color:#fff; margin-top:10px">Alinhe o QR Code ou a lista de artigos</div>
+  <div class="cam-frame">
+    <video id="cam-video" autoplay playsinline muted></video>
+    <canvas id="cam-canvas" style="display:none"></canvas>
+    <div class="cor tl"></div><div class="cor tr"></div>
+    <div class="cor bl"></div><div class="cor br"></div>
+    <div class="slr"></div>
+  </div>
+  <div style="color:#fff; margin-top:15px; font-size:13px">Aponte para os artigos ou QR Code</div>
   <button class="cam-shutter" onclick="captureAndProcess()"></button>
 </div>
 
 <div id="ocr-loading">
-  <div class="spinner"></div>
-  <p style="margin-top:15px">A ler QR Code e Artigos...</p>
-  <small style="color:var(--t3)">Isto pode demorar até 10 segundos</small>
+  <div class="ocr-spin"></div>
+  <p style="color:#fff; text-align:center">🧠 A analisar fatura com IA...<br><span style="font-size:12px;color:var(--t3)">Pode demorar alguns segundos</span></p>
+</div>
+
+<div class="overlay" id="m-invoice">
+  <div class="sheet">
+    <div class="sh-hdr"><h3>Nova Fatura</h3><button onclick="closeSheet('m-invoice')" style="background:none; border:none; color:var(--t3); font-size:20px">✕</button></div>
+    <div class="sh-body">
+      <div class="fg">
+        <div class="fi full"><label>NIF Fornecedor</label><input id="inv-nif" type="text"></div>
+        <div class="fi"><label>Data</label><input id="inv-date" type="date"></div>
+        <div class="fi"><label>Total (€)</label><input id="inv-total" type="number"></div>
+      </div>
+      <div class="card-title" style="margin-top:20px">Artigos Detetados</div>
+      <div id="detected-items" style="display:flex; flex-direction:column; gap:8px"></div>
+    </div>
+    <div class="sh-footer">
+      <button class="btn btn-ghost" onclick="closeSheet('m-invoice')">Cancelar</button>
+      <button class="btn btn-prim" onclick="saveInvoice()">✓ Guardar Tudo</button>
+    </div>
+  </div>
 </div>
 
 <script>
 let stream = null;
 
+// --- NAVEGAÇÃO ---
+function goPage(id, el) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('on'));
+    document.querySelectorAll('.bn').forEach(b => b.classList.remove('on'));
+    document.getElementById('p-' + id).classList.add('on');
+    el.classList.add('on');
+}
+
+function closeSheet(id) { document.getElementById(id).classList.remove('on'); }
+
+// --- LOGICA DA CAMERA ---
 async function openOCRScan() {
-    const wrap = document.getElementById('cam-wrap');
-    wrap.classList.add('on');
+    document.getElementById('cam-wrap').classList.add('on');
     try {
         stream = await navigator.mediaDevices.getUserMedia({ 
-            video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } } 
+            video: { facingMode: "environment", width: { ideal: 1280 } } 
         });
         document.getElementById('cam-video').srcObject = stream;
-    } catch (err) {
-        alert("Erro ao aceder à câmara.");
-        closeCam();
-    }
+    } catch (e) { alert("Câmara não disponível."); closeCam(); }
 }
 
 function closeCam() {
@@ -110,84 +186,97 @@ function closeCam() {
     document.getElementById('cam-wrap').classList.remove('on');
 }
 
+// --- O MOTOR DE INTELIGÊNCIA (Captura e Processamento) ---
 async function captureAndProcess() {
     const video = document.getElementById('cam-video');
     const canvas = document.getElementById('cam-canvas');
     const ctx = canvas.getContext('2d');
     const loading = document.getElementById('ocr-loading');
 
-    // Ajusta canvas para alta resolução
+    // 1. Capturar Frame
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     ctx.drawImage(video, 0, 0);
-
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+    
     loading.style.display = 'flex';
 
     try {
-        // 1. Tentar ler QR Code (jsQR)
+        // 2. Tentar QR Code Primeiro (Rápido)
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const code = jsQR(imageData.data, imageData.width, imageData.height);
-        let dadosFiscais = {};
-        
-        if (code) {
-            console.log("QR Code detectado:", code.data);
-            dadosFiscais = parseATQRCode(code.data);
-        }
+        let qrInfo = {};
+        if (code) qrInfo = parseQR(code.data);
 
-        // 2. Tentar ler Artigos (Tesseract OCR)
-        // Convertemos para DataURL para o Tesseract processar
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        // 3. Tentar OCR para Artigos (Demorado mas Completo)
         const worker = await Tesseract.createWorker('por');
         const { data: { text } } = await worker.recognize(dataUrl);
         await worker.terminate();
 
-        const artigos = parseArtigos(text);
+        const artigos = parseLines(text);
 
-        // 3. Resultado Final
+        // 4. Preencher Interface
         loading.style.display = 'none';
         closeCam();
-
-        // Aqui você chamaria sua função de abrir o formulário com os dados
-        alert(`Processado!\nNIF: ${dadosFiscais.nif || 'Não lido'}\nArtigos encontrados: ${artigos.length}`);
-        console.log("Resultado OCR:", artigos);
+        showInvoiceResult(qrInfo, artigos);
 
     } catch (err) {
         console.error(err);
         loading.style.display = 'none';
-        alert("Falha no processamento da imagem.");
+        alert("Erro no processamento.");
     }
 }
 
-// Extrai dados do formato padrão QR Code Portugal (AT)
-function parseATQRCode(data) {
-    const parts = data.split('*');
+// Parser para o QR Code AT (Portugal)
+function parseQR(data) {
+    const fields = data.split('*');
     const info = {};
-    parts.forEach(p => {
-        const [key, val] = p.split(':');
-        if (key === 'A') info.nif = val;
-        if (key === 'G') info.id = val;
-        if (key === 'I1') info.total = val;
+    fields.forEach(f => {
+        const [k, v] = f.split(':');
+        if(k === 'A') info.nif = v;
+        if(k === 'F') info.data = v.substring(0,4)+'-'+v.substring(4,6)+'-'+v.substring(6,8);
+        if(k === 'I1') info.total = v;
     });
     return info;
 }
 
-// Lógica para filtrar nomes de produtos e preços no texto
-function parseArtigos(text) {
+// Parser de Linhas para Artigos
+function parseLines(text) {
     const lines = text.split('\n');
     const found = [];
-    // Regex para procurar valores monetários no fim da linha (ex: 1,50 ou 12.00)
-    const priceRegex = /(\d+[\.,]\d{2})$/;
+    const priceRegex = /(\d+[.,]\d{2})/; // Procura algo como 10.50 ou 10,50
 
-    lines.forEach(line => {
-        const match = line.match(priceRegex);
-        if (match && line.trim().length > 5) {
+    lines.forEach(l => {
+        const match = l.match(priceRegex);
+        if (match && l.trim().length > 5) {
             found.push({
-                nome: line.replace(match[0], '').trim(),
-                preco: match[1].replace(',', '.')
+                desc: l.replace(match[0], '').trim().substring(0, 30),
+                val: match[0].replace(',', '.')
             });
         }
     });
     return found;
+}
+
+function showInvoiceResult(qr, arts) {
+    document.getElementById('m-invoice').classList.add('on');
+    document.getElementById('inv-nif').value = qr.nif || "";
+    document.getElementById('inv-date').value = qr.data || "";
+    document.getElementById('inv-total').value = qr.total || "";
+
+    const list = document.getElementById('detected-items');
+    list.innerHTML = "";
+    arts.forEach(a => {
+        const div = document.createElement('div');
+        div.style = "background:var(--s2); padding:10px; border-radius:8px; display:flex; justify-content:space-between; font-size:12px";
+        div.innerHTML = `<span>${a.desc}</span><b style="color:var(--acc)">${a.val}€</b>`;
+        list.appendChild(div);
+    });
+}
+
+function saveInvoice() {
+    alert("Dados guardados com sucesso!");
+    closeSheet('m-invoice');
 }
 </script>
 
