@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>StockScan - Gestão de Faturas</title>
-<!-- Supabase SDK -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 <style>
@@ -161,8 +160,6 @@ header{flex-shrink:0;padding:14px 16px 10px;display:flex;align-items:center;just
   <div class="logo"><div class="logo-box">📦</div><h1>Stock<span>Scan</span></h1></div>
   <div class="hdr-right">
     <div id="user-info" style="display:none"><span id="user-email"></span><div class="icon-btn" id="logout-btn" title="Sair">🚪</div></div>
-    <div class="icon-btn" id="import-btn" title="Importar PDF/Imagem">📂</div>
-    <div class="icon-btn" id="export-btn" title="Exportar JSON">⬇</div>
     <div class="icon-btn" id="camera-btn" title="Digitalizar fatura">📷</div>
   </div>
 </header>
@@ -240,7 +237,7 @@ const SUPABASE_ANON_KEY = 'sb_publishable_L8_BSQnaKtl0wdlcA645vA__HHhozVn';
 const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ============================================================
-// ESTADO GLOBAL
+// ESTADO GLOBAL - com fallback para localStorage
 // ============================================================
 let currentUser = null;
 let invoices = [];
@@ -277,6 +274,45 @@ function closeSheet(id){ document.getElementById(id).classList.remove('on'); }
 function showLoading(show){ const el=document.getElementById('ocr-loading'); if(el) el.style.display=show?'flex':'none'; }
 
 // ============================================================
+// FUNÇÕES DE PERSISTÊNCIA LOCAL (fallback)
+// ============================================================
+function saveToLocalStorage() {
+  localStorage.setItem('stockscan_invoices', JSON.stringify(invoices));
+  localStorage.setItem('stockscan_articles', JSON.stringify(articles));
+  localStorage.setItem('stockscan_families', JSON.stringify(families));
+  localStorage.setItem('stockscan_alerts', JSON.stringify(alerts));
+  localStorage.setItem('stockscan_config', JSON.stringify(userConfig));
+}
+
+function loadFromLocalStorage() {
+  const savedInvoices = localStorage.getItem('stockscan_invoices');
+  const savedArticles = localStorage.getItem('stockscan_articles');
+  const savedFamilies = localStorage.getItem('stockscan_families');
+  const savedAlerts = localStorage.getItem('stockscan_alerts');
+  const savedConfig = localStorage.getItem('stockscan_config');
+  
+  if (savedInvoices) invoices = JSON.parse(savedInvoices);
+  if (savedArticles) articles = JSON.parse(savedArticles);
+  if (savedFamilies) families = JSON.parse(savedFamilies);
+  if (savedAlerts) alerts = JSON.parse(savedAlerts);
+  if (savedConfig) userConfig = JSON.parse(savedConfig);
+  
+  if (families.length === 0) {
+    families = [
+      { id: 'f1', name: 'Carnes', icon: '🥩', color: '#F87171' },
+      { id: 'f2', name: 'Peixe', icon: '🐟', color: '#60A5FA' },
+      { id: 'f3', name: 'Laticínios', icon: '🧀', color: '#FACC15' },
+      { id: 'f4', name: 'Bebidas', icon: '🍷', color: '#C084FC' },
+      { id: 'f5', name: 'Mercearia', icon: '🛒', color: '#4ADE80' },
+      { id: 'f6', name: 'Legumes', icon: '🥦', color: '#34D399' },
+      { id: 'f7', name: 'Limpeza', icon: '🧹', color: '#94A3B8' },
+      { id: 'f8', name: 'Outros', icon: '📦', color: '#FB923C' },
+    ];
+    saveToLocalStorage();
+  }
+}
+
+// ============================================================
 // NAVEGAÇÃO
 // ============================================================
 function goPage(id){
@@ -300,7 +336,10 @@ async function onAuthSuccess(user) {
   document.getElementById('login-container').style.display = 'none';
   document.getElementById('user-info').style.display = 'flex';
   document.getElementById('user-email').textContent = user.email.split('@')[0];
+  
+  // Carregar dados (tenta Supabase, fallback para localStorage)
   await loadUserData();
+  
   renderDash();
   renderInvoiceList();
   renderArticleList();
@@ -309,47 +348,46 @@ async function onAuthSuccess(user) {
 }
 
 async function loadUserData() {
-  if (!currentUser) return;
-  
-  const { data: famData } = await _supabase.from('families').select('*').eq('user_id', currentUser.id);
-  families = famData || [];
-  if (families.length === 0) {
-    const defaultFams = [
-      { id: 'f1', name: 'Carnes', icon: '🥩', color: '#F87171' },
-      { id: 'f2', name: 'Peixe', icon: '🐟', color: '#60A5FA' },
-      { id: 'f3', name: 'Laticínios', icon: '🧀', color: '#FACC15' },
-      { id: 'f4', name: 'Bebidas', icon: '🍷', color: '#C084FC' },
-      { id: 'f5', name: 'Mercearia', icon: '🛒', color: '#4ADE80' },
-      { id: 'f6', name: 'Legumes', icon: '🥦', color: '#34D399' },
-      { id: 'f7', name: 'Limpeza', icon: '🧹', color: '#94A3B8' },
-      { id: 'f8', name: 'Outros', icon: '📦', color: '#FB923C' },
-    ];
-    for (const fam of defaultFams) {
-      await _supabase.from('families').insert({ ...fam, user_id: currentUser.id });
-    }
-    const { data: newFams } = await _supabase.from('families').select('*').eq('user_id', currentUser.id);
-    families = newFams || [];
+  if (!currentUser) {
+    loadFromLocalStorage();
+    return;
   }
   
-  const { data: artData } = await _supabase.from('articles').select('*').eq('user_id', currentUser.id);
-  const { data: priceData } = await _supabase.from('article_prices').select('*').eq('user_id', currentUser.id);
-  articles = (artData || []).map(art => ({
-    ...art,
-    prices: (priceData || []).filter(p => p.article_id === art.id).sort((a,b) => new Date(a.date) - new Date(b.date))
-  }));
-  
-  const { data: invData } = await _supabase.from('invoices').select('*').eq('user_id', currentUser.id);
-  const { data: itemData } = await _supabase.from('invoice_items').select('*').eq('user_id', currentUser.id);
-  invoices = (invData || []).map(inv => ({
-    ...inv,
-    items: (itemData || []).filter(it => it.invoice_id === inv.id)
-  }));
-  
-  const { data: alertData } = await _supabase.from('price_alerts').select('*').eq('user_id', currentUser.id);
-  alerts = alertData || [];
-  
-  const { data: settings } = await _supabase.from('user_settings').select('*').eq('user_id', currentUser.id).single();
-  if (settings) userConfig = { biz: settings.biz_name, nif: settings.nif, alertPct: settings.alert_pct };
+  try {
+    // Tenta carregar do Supabase
+    const { data: famData } = await _supabase.from('families').select('*').eq('user_id', currentUser.id);
+    if (famData && famData.length > 0) {
+      families = famData;
+    } else {
+      loadFromLocalStorage();
+    }
+    
+    const { data: artData } = await _supabase.from('articles').select('*').eq('user_id', currentUser.id);
+    const { data: priceData } = await _supabase.from('article_prices').select('*').eq('user_id', currentUser.id);
+    articles = (artData || []).map(art => ({
+      ...art,
+      prices: (priceData || []).filter(p => p.article_id === art.id).sort((a,b) => new Date(a.date) - new Date(b.date))
+    }));
+    
+    const { data: invData } = await _supabase.from('invoices').select('*').eq('user_id', currentUser.id);
+    const { data: itemData } = await _supabase.from('invoice_items').select('*').eq('user_id', currentUser.id);
+    invoices = (invData || []).map(inv => ({
+      ...inv,
+      items: (itemData || []).filter(it => it.invoice_id === inv.id)
+    }));
+    
+    const { data: alertData } = await _supabase.from('price_alerts').select('*').eq('user_id', currentUser.id);
+    alerts = alertData || [];
+    
+    const { data: settings } = await _supabase.from('user_settings').select('*').eq('user_id', currentUser.id).single();
+    if (settings) userConfig = { biz: settings.biz_name, nif: settings.nif, alertPct: settings.alert_pct };
+    else if (localStorage.getItem('stockscan_config')) userConfig = JSON.parse(localStorage.getItem('stockscan_config'));
+    
+    saveToLocalStorage();
+  } catch(e) {
+    console.warn('Erro ao carregar do Supabase, usando localStorage:', e);
+    loadFromLocalStorage();
+  }
 }
 
 // ============================================================
@@ -390,7 +428,7 @@ function renderTopArticles() {
 }
 
 // ============================================================
-// FATURAS (resumidas mas funcionais)
+// FATURAS
 // ============================================================
 function renderInvoiceList() {
   const q=(document.getElementById('inv-srch')?.value||'').toLowerCase();
@@ -405,7 +443,7 @@ function renderInvoiceList() {
   });
 }
 
-async function showInvoiceDetail(id) {
+function showInvoiceDetail(id) {
   const inv=invoices.find(i=>i.id===id); if(!inv)return;
   document.getElementById('d-inv-num').textContent=inv.num||'Fatura';
   const photoSection=inv.photo?`<div style="border-radius:12px;overflow:hidden;border:1px solid var(--b);margin-bottom:14px;max-height:200px"><img src="${inv.photo}" style="width:100%;display:block;object-fit:cover;max-height:200px"></div>`:'';
@@ -414,20 +452,20 @@ async function showInvoiceDetail(id) {
   const footer=document.getElementById('d-inv-footer');
   footer.innerHTML='';
   const del=document.createElement('button');del.className='btn btn-danger';del.textContent='🗑';del.style.flex='0';del.style.padding='11px 14px';
-  del.onclick=async()=>{if(!confirm('Eliminar fatura?'))return; await _supabase.from('invoices').delete().eq('id',id); invoices=invoices.filter(i=>i.id!==id); closeSheet('m-invdetail'); toast('🗑 Eliminada'); renderDash(); renderInvoiceList(); };
+  del.onclick=()=>{if(!confirm('Eliminar fatura?'))return; invoices=invoices.filter(i=>i.id!==id); saveToLocalStorage(); closeSheet('m-invdetail'); toast('🗑 Eliminada'); renderDash(); renderInvoiceList(); };
   const edit=document.createElement('button');edit.className='btn btn-ghost';edit.textContent='✏️ Editar';
   edit.onclick=()=>{ closeSheet('m-invdetail'); openInvoiceForm(inv); };
   footer.appendChild(del); footer.appendChild(edit);
   if(inv.status==='pendente'){
     const sb=document.createElement('button');sb.className='btn btn-prim';sb.textContent='📤';sb.style.flex='0';sb.style.padding='11px 14px';
-    sb.onclick=async()=>{ await _supabase.from('invoices').update({status:'enviada'}).eq('id',id); inv.status='enviada'; closeSheet('m-invdetail'); renderInvoiceList(); renderDash(); toast('📤 Marcada enviada!'); };
+    sb.onclick=()=>{ inv.status='enviada'; saveToLocalStorage(); closeSheet('m-invdetail'); renderInvoiceList(); renderDash(); toast('📤 Marcada enviada!'); };
     footer.appendChild(sb);
   }
   openSheet('m-invdetail');
 }
 
 // ============================================================
-// ARTIGOS (resumidos)
+// ARTIGOS
 // ============================================================
 function renderArticleList() {
   const q=(document.getElementById('art-srch')?.value||'').toLowerCase();
@@ -473,12 +511,12 @@ function editArticle(id) {
   });
 }
 
-async function saveArticleEdit() {
+function saveArticleEdit() {
   const art=articles.find(a=>a.id===editArtId); if(!art)return;
   art.name=document.getElementById('ea-name').value.trim()||art.name;
   art.unit=document.getElementById('ea-unit').value.trim()||'un';
   art.ean=document.getElementById('ea-ean').value.trim();
-  await _supabase.from('articles').update({name:art.name, unit:art.unit, ean:art.ean, family_id:art.family_id}).eq('id',art.id);
+  saveToLocalStorage();
   closeSheet('m-editart');
   renderArticleList();
   toast('✅ Artigo actualizado!');
@@ -498,9 +536,9 @@ function renderAlerts() {
   });
 }
 
-async function resolveAlert(id) {
-  await _supabase.from('price_alerts').update({resolved:true}).eq('id',id);
+function resolveAlert(id) {
   const a=alerts.find(x=>x.id===id); if(a)a.resolved=true;
+  saveToLocalStorage();
   renderAlerts(); renderDash();
   toast('✓ Alerta resolvido');
 }
@@ -522,15 +560,15 @@ function renderFamilyList() {
   document.querySelectorAll('.del-fam').forEach(btn=>btn.addEventListener('click',()=>deleteFamily(btn.dataset.id)));
 }
 
-async function saveCfg() {
+function saveCfg() {
   userConfig = { biz: document.getElementById('cfg-biz').value.trim(), nif: document.getElementById('cfg-nif').value.trim(), alertPct: parseFloat(document.getElementById('cfg-alert-pct').value)||10 };
-  await _supabase.from('user_settings').upsert({ user_id: currentUser.id, biz_name: userConfig.biz, nif: userConfig.nif, alert_pct: userConfig.alertPct, updated_at: new Date() });
+  saveToLocalStorage();
   toast('✅ Configurações guardadas!');
 }
 
 function openAddFamily() { editFamId=null; document.getElementById('m-fam-title').textContent='Nova Família'; document.getElementById('fam-name').value=''; document.getElementById('fam-icon').value=''; document.getElementById('fam-color').value='#4ADE80'; openSheet('m-family'); }
 function editFamily(id) { const f=families.find(x=>x.id===id); if(!f)return; editFamId=id; document.getElementById('m-fam-title').textContent='Editar Família'; document.getElementById('fam-name').value=f.name; document.getElementById('fam-icon').value=f.icon; document.getElementById('fam-color').value=f.color; openSheet('m-family'); }
-async function saveFamily() {
+function saveFamily() {
   const name=document.getElementById('fam-name').value.trim();
   const icon=document.getElementById('fam-icon').value.trim()||'📦';
   const color=document.getElementById('fam-color').value;
@@ -538,22 +576,21 @@ async function saveFamily() {
   if(editFamId){
     const idx=families.findIndex(f=>f.id===editFamId);
     if(idx>=0) families[idx]={...families[idx],name,icon,color};
-    await _supabase.from('families').update({name,icon,color}).eq('id',editFamId);
   } else {
     const newId='f'+uid();
-    families.push({id:newId,name,icon,color,user_id:currentUser.id});
-    await _supabase.from('families').insert({id:newId,name,icon,color,user_id:currentUser.id});
+    families.push({id:newId,name,icon,color});
   }
+  saveToLocalStorage();
   closeSheet('m-family');
   renderFamilyList();
   renderArticleList();
   toast(editFamId?'✏️ Família actualizada!':'✅ Família adicionada!');
   editFamId=null;
 }
-async function deleteFamily(id) {
+function deleteFamily(id) {
   if(articles.some(a=>a.family_id===id)&&!confirm('Esta família tem artigos. Eliminar mesmo assim?'))return;
   families=families.filter(f=>f.id!==id);
-  await _supabase.from('families').delete().eq('id',id);
+  saveToLocalStorage();
   renderFamilyList();
   toast('🗑 Família eliminada');
 }
@@ -587,17 +624,13 @@ function calcItemTotal(){ const qty=parseFloat(document.getElementById('ai-qty')
 function saveFormItem(){ const g=id=>document.getElementById(id)?.value?.trim()||''; const qty=parseFloat(g('ai-qty'))||1; const unitPrice=parseFloat(g('ai-price'))||0; const totalPrice=parseFloat(g('ai-total'))||qty*unitPrice; const item={ id:uid(), name:g('ai-name'), quantity:qty, unit:g('ai-unit'), unit_price:unitPrice, total_price:totalPrice, vatRate:parseFloat(g('ai-vatrate'))||23, famId:'' }; if(!item.name){toast('⚠ Insira o nome do artigo','err');return;} formItems.push(item); renderFormItems(); closeSheet('m-additem'); toast('✅ Artigo adicionado'); }
 function editItemFamily(itemId){ const item=formItems.find(i=>i.id===itemId); if(!item)return; document.getElementById('fam-picker-target').value=itemId; document.getElementById('fam-picker-grid').innerHTML=families.map(f=>`<div class="fam-pick-opt ${item.famId===f.id?'sel':''}" data-fid="${f.id}" data-fcolor="${f.color}" style="border-color:${item.famId===f.id?f.color:'var(--b)'}"><span style="font-size:20px">${f.icon}</span><span style="font-size:11px;font-weight:700">${f.name}</span></div>`).join(''); openSheet('m-fampicker'); }
 function setItemFam(itemId,famId){ const item=formItems.find(i=>i.id===itemId); if(item)item.famId=famId; renderFormItems(); }
-async function saveInvoice() {
+function saveInvoice() {
   const g=id=>document.getElementById(id)?.value?.trim()||'';
   const photo=document.getElementById('inv-form-fields')?.dataset?.photo||null;
-  const inv={ id:editInvId||uid(), supplier:g('fi-sup'), nif:g('fi-nif'), num:g('fi-num'), date:g('fi-date'), total:parseFloat(g('fi-total'))||0, vat:parseFloat(g('fi-vat'))||0, atcud:g('fi-atcud'), photo, status:'pendente', user_id:currentUser.id };
-  await _supabase.from('invoices').upsert(inv);
-  await _supabase.from('invoice_items').delete().eq('invoice_id',inv.id);
-  for(const item of formItems){
-    await _supabase.from('invoice_items').insert({ id:item.id||uid(), invoice_id:inv.id, name:item.name, quantity:item.quantity, unit:item.unit, unit_price:item.unit_price, total_price:item.total_price, vat_rate:item.vatRate, family_id:item.famId, user_id:currentUser.id });
-  }
-  if(editInvId){ const idx=invoices.findIndex(i=>i.id===editInvId); if(idx>=0) invoices[idx]={...inv,items:formItems}; }
-  else invoices.unshift({...inv,items:formItems});
+  const inv={ id:editInvId||uid(), supplier:g('fi-sup'), nif:g('fi-nif'), num:g('fi-num'), date:g('fi-date'), total:parseFloat(g('fi-total'))||0, vat:parseFloat(g('fi-vat'))||0, atcud:g('fi-atcud'), photo, status:'pendente', items:formItems };
+  if(editInvId){ const idx=invoices.findIndex(i=>i.id===editInvId); if(idx>=0) invoices[idx]=inv; }
+  else invoices.unshift(inv);
+  saveToLocalStorage();
   closeSheet('m-invoice');
   formItems=[]; editInvId=null;
   renderDash(); renderInvoiceList();
@@ -707,7 +740,7 @@ function switchCam() {
 }
 
 // ============================================================
-// EXPORT/IMPORT
+// EXPORT
 // ============================================================
 function exportData() {
   const data = { invoices, articles, families, alerts, config: userConfig, exportedAt: new Date().toISOString() };
@@ -730,7 +763,21 @@ document.addEventListener('DOMContentLoaded', function() {
     const email = document.getElementById('login-email').value;
     const password = document.getElementById('login-password').value;
     const { data, error } = await _supabase.auth.signInWithPassword({ email, password });
-    if (error) { toast('Erro: ' + error.message); return; }
+    if (error) { 
+      // Fallback: permite uso offline com localStorage
+      loadFromLocalStorage();
+      currentUser = { email: email, id: 'local' };
+      document.getElementById('login-container').style.display = 'none';
+      document.getElementById('user-info').style.display = 'flex';
+      document.getElementById('user-email').textContent = email.split('@')[0];
+      renderDash();
+      renderInvoiceList();
+      renderArticleList();
+      renderAlerts();
+      renderConfig();
+      toast('⚠ Modo offline - dados locais apenas');
+      return;
+    }
     toast('✅ Login efetuado!');
     await onAuthSuccess(data.user);
   });
@@ -759,6 +806,10 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('close-family').addEventListener('click', () => closeSheet('m-family'));
   document.getElementById('export-data-btn').addEventListener('click', exportData);
   document.getElementById('logout-config-btn').addEventListener('click', async () => {
+    await _supabase.auth.signOut();
+    location.reload();
+  });
+  document.getElementById('logout-btn').addEventListener('click', async () => {
     await _supabase.auth.signOut();
     location.reload();
   });
@@ -809,9 +860,9 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('ok-pricealert').addEventListener('click', () => closeSheet('m-pricealert'));
   
   // Resolve all alerts
-  document.getElementById('resolve-all-alerts')?.addEventListener('click', async () => {
-    await _supabase.from('price_alerts').update({ resolved: true }).eq('user_id', currentUser?.id);
+  document.getElementById('resolve-all-alerts')?.addEventListener('click', () => {
     alerts.forEach(a => a.resolved = true);
+    saveToLocalStorage();
     renderAlerts(); renderDash();
     toast('✓ Todos os alertas resolvidos');
   });
@@ -847,6 +898,8 @@ _supabase.auth.getSession().then(({ data: { session } }) => {
   if (session?.user) {
     onAuthSuccess(session.user);
   } else {
+    // Modo offline - carrega dados do localStorage
+    loadFromLocalStorage();
     document.getElementById('login-container').style.display = 'flex';
   }
 });
