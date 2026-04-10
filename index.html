@@ -54,9 +54,11 @@ input:focus{outline:none;border-color:#4ADE80}
 <div id="login-screen" style="display:flex;flex-direction:column;justify-content:center;min-height:80vh">
   <div class="login-card">
     <h2>🔐 StockScan Cloud</h2>
-    <input type="email" id="login-email" placeholder="Email" autocomplete="email">
-    <input type="password" id="login-password" placeholder="Password" autocomplete="current-password">
-    <button class="btn btn-primary" style="width:100%;margin-bottom:8px" id="login-btn">Entrar</button>
+    <form id="login-form" style="display:flex;flex-direction:column">
+      <input type="email" id="login-email" placeholder="Email" autocomplete="email" required>
+      <input type="password" id="login-password" placeholder="Password" autocomplete="current-password" required>
+      <button type="submit" class="btn btn-primary" style="width:100%;margin-bottom:8px">Entrar</button>
+    </form>
     <button class="btn" style="width:100%" id="signup-btn">Criar conta gratuita</button>
   </div>
 </div>
@@ -104,11 +106,12 @@ input:focus{outline:none;border-color:#4ADE80}
 
 <script>
 // ============================================================
-// SUPABASE CONFIG
+// SUPABASE CONFIG - usando o cliente global do SDK
 // ============================================================
 const SUPABASE_URL = 'https://clhhnzgjcrxezxhvguiy.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_L8_BSQnaKtl0wdlcA645vA__HHhozVn';
-const supabase = supabaseJs.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Usamos o cliente do SDK que já está carregado (não declaramos nova variável)
+const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ============================================================
 // ESTADO GLOBAL
@@ -122,53 +125,20 @@ let currentFacing = 'environment';
 // ============================================================
 // FUNÇÕES DE AUTENTICAÇÃO
 // ============================================================
-async function login() {
-  const email = document.getElementById('login-email').value;
-  const password = document.getElementById('login-password').value;
-  if (!email || !password) {
-    toast('Preencha email e password');
-    return;
-  }
-  
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) {
-    toast('Erro: ' + error.message);
-    return;
-  }
-  
-  toast('✅ Login efetuado!');
-  await onAuthSuccess(data.user);
+async function doLogin(email, password) {
+  const { data, error } = await _supabase.auth.signInWithPassword({ email, password });
+  if (error) throw error;
+  return data;
 }
 
-async function signup() {
-  const email = document.getElementById('login-email').value;
-  const password = document.getElementById('login-password').value;
-  if (!email || !password) {
-    toast('Preencha email e password');
-    return;
-  }
-  if (password.length < 6) {
-    toast('Password com pelo menos 6 caracteres');
-    return;
-  }
-  
-  const { data, error } = await supabase.auth.signUp({ email, password });
-  if (error) {
-    toast('Erro: ' + error.message);
-    return;
-  }
-  
-  toast('✅ Conta criada! Verifique o email para confirmar.');
+async function doSignup(email, password) {
+  const { data, error } = await _supabase.auth.signUp({ email, password });
+  if (error) throw error;
+  return data;
 }
 
-async function logout() {
-  await supabase.auth.signOut();
-  currentUser = null;
-  document.getElementById('login-screen').style.display = 'flex';
-  document.getElementById('app-content').style.display = 'none';
-  document.getElementById('user-info').style.display = 'none';
-  stopCamera();
-  toast('👋 Sessão terminada');
+async function doLogout() {
+  await _supabase.auth.signOut();
 }
 
 async function onAuthSuccess(user) {
@@ -177,9 +147,55 @@ async function onAuthSuccess(user) {
   document.getElementById('app-content').style.display = 'block';
   document.getElementById('user-info').style.display = 'flex';
   document.getElementById('user-email').textContent = user.email.split('@')[0];
-  
-  // Inicia câmara
   startCamera();
+}
+
+// ============================================================
+// EVENT HANDLERS
+// ============================================================
+async function handleLogin(email, password) {
+  if (!email || !password) {
+    toast('Preencha email e password');
+    return false;
+  }
+  try {
+    const data = await doLogin(email, password);
+    toast('✅ Login efetuado!');
+    await onAuthSuccess(data.user);
+    return true;
+  } catch (error) {
+    toast('Erro: ' + error.message);
+    return false;
+  }
+}
+
+async function handleSignup(email, password) {
+  if (!email || !password) {
+    toast('Preencha email e password');
+    return false;
+  }
+  if (password.length < 6) {
+    toast('Password com pelo menos 6 caracteres');
+    return false;
+  }
+  try {
+    const data = await doSignup(email, password);
+    toast('✅ Conta criada! Verifique o email para confirmar.');
+    return true;
+  } catch (error) {
+    toast('Erro: ' + error.message);
+    return false;
+  }
+}
+
+async function handleLogout() {
+  await doLogout();
+  currentUser = null;
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('app-content').style.display = 'none';
+  document.getElementById('user-info').style.display = 'none';
+  stopCamera();
+  toast('👋 Sessão terminada');
 }
 
 // ============================================================
@@ -196,7 +212,6 @@ async function startCamera() {
     await video.play();
     document.getElementById('status').innerHTML = '📷 Câmara ativa. Clique em "Ler QR" e aponte para o código.';
   } catch(e) {
-    // Fallback sem facingMode
     try {
       stream = await navigator.mediaDevices.getUserMedia({ video: true });
       const video = document.getElementById('video');
@@ -282,10 +297,8 @@ function startScanning() {
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     
-    // Tenta ler QR
     let code = jsQR(imageData.data, canvas.width, canvas.height, { inversionAttempts: 'attemptBoth' });
     
-    // Se não achou, tenta com imagem invertida
     if (!code) {
       const inverted = new Uint8ClampedArray(imageData.data.length);
       for (let i = 0; i < imageData.data.length; i += 4) {
@@ -304,7 +317,6 @@ function startScanning() {
         if (lastQR === qrKey) {
           stableCount++;
           if (stableCount >= 2) {
-            // QR estável, processa
             clearInterval(scanInterval);
             scanInterval = null;
             scanning = false;
@@ -327,7 +339,6 @@ function processQRData(qrData) {
   toast('✅ QR lido com sucesso!');
   document.getElementById('status').innerHTML = '✅ QR detetado! Preencha os restantes campos.';
   
-  // Preenche formulário
   document.getElementById('nif').value = qrData.nif || '';
   document.getElementById('num').value = qrData.num || '';
   document.getElementById('date').value = qrData.date || new Date().toISOString().slice(0, 10);
@@ -389,7 +400,7 @@ async function saveInvoice() {
     created_at: new Date().toISOString()
   };
   
-  const { error } = await supabase.from('invoices').insert(invoice);
+  const { error } = await _supabase.from('invoices').insert(invoice);
   if (error) {
     toast('❌ Erro ao guardar: ' + error.message);
     return;
@@ -397,7 +408,6 @@ async function saveInvoice() {
   
   toast('✅ Fatura guardada!');
   
-  // Limpa formulário
   document.getElementById('supplier').value = '';
   document.getElementById('nif').value = '';
   document.getElementById('num').value = '';
@@ -421,25 +431,54 @@ function toast(msg, duration = 3000) {
 }
 
 // ============================================================
-// EVENT LISTENERS (para evitar problemas de onclick no GitHub)
+// EVENT LISTENERS
 // ============================================================
 document.addEventListener('DOMContentLoaded', function() {
-  // Botões de login
-  document.getElementById('login-btn').addEventListener('click', login);
-  document.getElementById('signup-btn').addEventListener('click', signup);
-  document.getElementById('logout-btn').addEventListener('click', logout);
+  // Login form
+  const loginForm = document.getElementById('login-form');
+  if (loginForm) {
+    loginForm.addEventListener('submit', function(e) {
+      e.preventDefault();
+      const email = document.getElementById('login-email').value;
+      const password = document.getElementById('login-password').value;
+      handleLogin(email, password);
+    });
+  }
   
-  // Botões da app
-  document.getElementById('switch-cam-btn').addEventListener('click', switchCamera);
-  document.getElementById('scan-qr-btn').addEventListener('click', startScanning);
-  document.getElementById('manual-btn').addEventListener('click', openManualForm);
-  document.getElementById('save-btn').addEventListener('click', saveInvoice);
+  // Signup button
+  const signupBtn = document.getElementById('signup-btn');
+  if (signupBtn) {
+    signupBtn.addEventListener('click', function() {
+      const email = document.getElementById('login-email').value;
+      const password = document.getElementById('login-password').value;
+      handleSignup(email, password);
+    });
+  }
+  
+  // Logout button
+  const logoutBtn = document.getElementById('logout-btn');
+  if (logoutBtn) {
+    logoutBtn.addEventListener('click', handleLogout);
+  }
+  
+  // App buttons
+  const switchCamBtn = document.getElementById('switch-cam-btn');
+  if (switchCamBtn) switchCamBtn.addEventListener('click', switchCamera);
+  
+  const scanQrBtn = document.getElementById('scan-qr-btn');
+  if (scanQrBtn) scanQrBtn.addEventListener('click', startScanning);
+  
+  const manualBtn = document.getElementById('manual-btn');
+  if (manualBtn) manualBtn.addEventListener('click', openManualForm);
+  
+  const saveBtn = document.getElementById('save-btn');
+  if (saveBtn) saveBtn.addEventListener('click', saveInvoice);
 });
 
 // ============================================================
 // VERIFICAR SESSÃO EXISTENTE
 // ============================================================
-supabase.auth.getSession().then(({ data: { session } }) => {
+_supabase.auth.getSession().then(({ data: { session } }) => {
   if (session?.user) {
     onAuthSuccess(session.user);
   } else {
@@ -448,8 +487,7 @@ supabase.auth.getSession().then(({ data: { session } }) => {
   }
 });
 
-// Monitoriza mudanças na autenticação
-supabase.auth.onAuthStateChange((event, session) => {
+_supabase.auth.onAuthStateChange((event, session) => {
   if (session?.user) {
     onAuthSuccess(session.user);
   } else if (event === 'SIGNED_OUT') {
