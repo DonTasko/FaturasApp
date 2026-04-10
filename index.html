@@ -3,364 +3,235 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>StockScan - QR Code Scanner</title>
-<!-- Supabase SDK + jsQR -->
+<title>StockScan - Leitor QR</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
-/* ===== CSS COMPLETO ===== */
-*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-:root{
-  --bg:#0C0D10;--s1:#13141A;--s2:#1B1C24;--s3:#22232E;
-  --b:#2A2B3A;--b2:#383A4E;
-  --t:#ECEDF5;--t2:#9496B0;--t3:#55566E;
-  --acc:#4ADE80;--acc2:#22C55E;--acc-dim:#4ADE8015;--acc-glow:#4ADE8040;
-  --warn:#FACC15;--warn-dim:#FACC1512;
-  --red:#F87171;--red-dim:#F8717112;
-  --blue:#60A5FA;--blue-dim:#60A5FA12;
-  --purple:#C084FC;--purple-dim:#C084FC12;
-  --mono:monospace;--sans:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-}
-html,body{height:100%;overflow:hidden}
-body{background:var(--bg);color:var(--t);font-family:var(--sans);display:flex;flex-direction:column;max-width:480px;margin:0 auto}
-header{flex-shrink:0;padding:14px 16px 10px;display:flex;align-items:center;justify-content:space-between;background:var(--bg);border-bottom:1px solid var(--b);z-index:30}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0C0D10;color:#ECEDF5;font-family:-apple-system,sans-serif;max-width:480px;margin:0 auto}
+.header{padding:14px 16px;display:flex;justify-content:space-between;background:#13141A;border-bottom:1px solid #2A2B3A}
 .logo{display:flex;align-items:center;gap:9px}
-.logo-box{width:32px;height:32px;background:var(--acc);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 0 16px var(--acc-glow);flex-shrink:0}
-.logo h1{font-size:16px;font-weight:800;letter-spacing:-.4px}
-.logo h1 span{color:var(--acc)}
-.hdr-right{display:flex;align-items:center;gap:7px}
-.icon-btn{width:34px;height:34px;border-radius:9px;background:var(--s2);border:1px solid var(--b);color:var(--t2);font-size:15px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
-.icon-btn:active{background:var(--s3);transform:scale(.93)}
-.main{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding-bottom:80px}
-.bot-nav{flex-shrink:0;display:flex;background:var(--s1);border-top:1px solid var(--b);padding-bottom:env(safe-area-inset-bottom)}
-.bn{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:10px 4px 8px;background:none;border:none;cursor:pointer;color:var(--t3);font-family:var(--sans);transition:.12s}
-.bn.on{color:var(--acc)}
-.bn-ic{font-size:18px;line-height:1}
-.bn-lbl{font-size:9px;font-weight:700;letter-spacing:.4px}
-.page{display:none;padding:14px 14px 6px;flex-direction:column;gap:11px;animation:fadein .2s ease}
-.page.on{display:flex}
-@keyframes fadein{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
-.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
-.stat{background:var(--s1);border:1px solid var(--b);border-radius:14px;padding:13px;position:relative;overflow:hidden}
-.stat::after{content:"";position:absolute;top:-12px;right:-12px;width:52px;height:52px;border-radius:50%;opacity:.07}
-.stat.g::after{background:var(--acc)}.stat.b::after{background:var(--blue)}.stat.y::after{background:var(--warn)}.stat.r::after{background:var(--red)}.stat.p::after{background:var(--purple)}
-.stat-lbl{font-size:9px;font-weight:700;color:var(--t3);letter-spacing:.8px;text-transform:uppercase;margin-bottom:4px}
-.stat-val{font-size:19px;font-weight:800;font-family:var(--mono);letter-spacing:-1px;line-height:1}
-.stat-sub{font-size:10px;color:var(--t3);margin-top:3px}
-.card{background:var(--s1);border:1px solid var(--b);border-radius:14px;padding:13px}
-.card-title{font-size:10px;font-weight:700;color:var(--t3);letter-spacing:.8px;text-transform:uppercase;margin-bottom:10px}
-.exp-item{background:var(--s1);border:1px solid var(--b);border-radius:14px;padding:12px 13px;display:flex;align-items:center;gap:10px;cursor:pointer;transition:.12s}
-.exp-item:active{background:var(--s2);transform:scale(.98)}
-.exp-ico{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
-.exp-mid{flex:1;min-width:0}
-.exp-name{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:-.2px}
-.exp-meta{font-size:10px;color:var(--t3);margin-top:2px;font-family:var(--mono)}
-.exp-r{text-align:right;flex-shrink:0}
-.exp-val{font-size:13px;font-weight:700;font-family:var(--mono);letter-spacing:-.5px}
-.pill{display:inline-block;padding:2px 7px;border-radius:20px;font-size:9px;font-weight:700;margin-top:3px}
-.pill-pend{background:var(--warn-dim);color:var(--warn)}
-.pill-ok{background:var(--acc-dim);color:var(--acc)}
-.chips{display:flex;flex-wrap:wrap;gap:6px}
-.chip{padding:5px 11px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;border:1.5px solid var(--b);color:var(--t3);background:var(--s2);font-family:var(--sans);transition:.12s}
-.chip.on{border-color:var(--acc);background:var(--acc-dim);color:var(--acc)}
-.chip:active{transform:scale(.94)}
-.srch{display:flex;align-items:center;gap:8px;background:var(--s1);border:1px solid var(--b);border-radius:11px;padding:9px 12px}
-.srch input{background:none;border:none;outline:none;color:var(--t);font-size:13px;flex:1;font-family:var(--sans)}
-.srch input::placeholder{color:var(--t3)}
-.fg{display:grid;grid-template-columns:1fr 1fr;gap:9px}
-.fi{display:flex;flex-direction:column;gap:4px}
-.fi.full{grid-column:1/-1}
-.fi label{font-size:9px;font-weight:700;color:var(--t3);letter-spacing:.8px;text-transform:uppercase}
-.fi input,.fi select{background:var(--s2);border:1.5px solid var(--b);border-radius:10px;padding:10px 12px;color:var(--t);font-size:13px;font-family:var(--sans);outline:none;transition:.15s;width:100%}
-.fi input:focus,.fi select:focus{border-color:var(--acc);box-shadow:0 0 0 3px #4ADE8012}
-.fi select option{background:var(--s2);color:var(--t)}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:11px 16px;border-radius:11px;font-size:13px;font-weight:700;font-family:var(--sans);cursor:pointer;border:none;transition:.15s}
-.btn:active{transform:scale(.96)}
-.btn-prim{background:var(--acc);color:#081A0D;box-shadow:0 4px 14px var(--acc-glow);flex:1}
-.btn-ghost{background:var(--s2);color:var(--t);border:1px solid var(--b);flex:1}
-.btn-danger{background:var(--red-dim);color:var(--red);border:1px solid #F8717130;flex:1}
-.overlay{position:fixed;inset:0;background:rgba(0,0,0,.82);backdrop-filter:blur(5px);z-index:100;display:none;align-items:flex-end;justify-content:center}
-.overlay.on{display:flex}
-.sheet{background:var(--s1);border:1px solid var(--b);border-radius:22px 22px 0 0;width:100%;max-width:480px;max-height:94vh;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:calc(env(safe-area-inset-bottom)+16px);animation:slideup .22s cubic-bezier(.32,1,.56,1)}
-@keyframes slideup{from{transform:translateY(100%)}to{transform:translateY(0)}}
-.sh-handle{width:36px;height:4px;background:var(--b2);border-radius:2px;margin:11px auto 2px}
-.sh-hdr{padding:5px 16px 13px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--b)}
-.sh-hdr h3{font-size:15px;font-weight:800;letter-spacing:-.3px}
-.sh-close{background:none;border:none;color:var(--t3);font-size:19px;cursor:pointer;padding:2px 5px;line-height:1}
-.sh-body{padding:14px 16px}
-.sh-footer{padding:11px 16px 0;display:flex;gap:8px}
-#cam-wrap{position:fixed;inset:0;background:#000;z-index:200;display:none;flex-direction:column;align-items:center;justify-content:center}
-#cam-wrap.on{display:flex}
-.cam-top{position:absolute;top:0;left:0;right:0;padding:14px 16px;display:flex;justify-content:space-between;z-index:1;background:linear-gradient(#000a,transparent)}
-.cam-top-btn{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.2);color:#fff;width:38px;height:38px;border-radius:50%;font-size:16px;display:flex;align-items:center;justify-content:center;cursor:pointer}
-#cam-video{width:100%;max-width:480px;display:block}
-#cam-canvas{display:none}
-.cam-frame{position:relative;width:100%;max-width:480px}
-.cam-corners{position:absolute;inset:0;pointer-events:none}
-.cor{position:absolute;width:26px;height:26px;border-color:var(--acc);border-style:solid}
-.cor.tl{top:6px;left:6px;border-width:3px 0 0 3px;border-radius:3px 0 0 0}
-.cor.tr{top:6px;right:6px;border-width:3px 3px 0 0;border-radius:0 3px 0 0}
-.cor.bl{bottom:6px;left:6px;border-width:0 0 3px 3px;border-radius:0 0 0 3px}
-.cor.br{bottom:6px;right:6px;border-width:0 3px 3px 0;border-radius:0 3px 3px 0}
-.slr{position:absolute;left:6px;right:6px;height:2px;background:linear-gradient(90deg,transparent,var(--acc),transparent);box-shadow:0 0 8px var(--acc);animation:scan 2s ease-in-out infinite}
-@keyframes scan{0%{top:6px}50%{top:calc(100% - 8px)}100%{top:6px}}
-.cam-bottom{position:absolute;bottom:calc(env(safe-area-inset-bottom)+16px);left:0;right:0;display:flex;flex-direction:column;align-items:center;gap:12px}
-#cam-hint{color:rgba(255,255,255,.8);font-size:13px;text-align:center;padding:0 20px}
-#cam-st{font-size:11px;color:#fff;font-family:var(--mono);min-height:16px;text-align:center;padding:0 20px}
-.cam-shutter{width:70px;height:70px;border-radius:50%;background:#fff;border:5px solid rgba(255,255,255,.4);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:26px;transition:.15s}
-.cam-shutter:active{transform:scale(.88)}
-.alert-row{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--b)}
-.alert-row:last-child{border-bottom:none}
-.alert-row.resolved{opacity:.45}
-.alert-ico{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
-.btn-resolve{background:var(--acc-dim);color:var(--acc);border:1px solid #4ADE8033;border-radius:8px;padding:4px 9px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--sans);flex-shrink:0}
-.form-item-row{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--b)}
-.fir-left{display:flex;align-items:center;gap:9px;min-width:0}
-.fir-fam{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer;flex-shrink:0}
-.fir-info{min-width:0}
-.btn-icon-sm{background:var(--red-dim);color:var(--red);border:none;border-radius:7px;padding:4px 8px;font-size:12px;cursor:pointer;flex-shrink:0}
-.fam-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.fam-pick-opt{background:var(--s2);border:1.5px solid var(--b);border-radius:12px;padding:11px;display:flex;align-items:center;gap:8px;cursor:pointer;transition:.12s}
-.fam-pick-opt.sel{background:var(--acc-dim)}
-.fam-pick-opt:active{transform:scale(.95)}
-.cat-row{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--s2);border:1px solid var(--b);border-radius:11px;margin-bottom:7px}
-.cat-row-ico{font-size:18px;flex-shrink:0}
-.cat-row-info{flex:1}
-.cat-row-info p{font-size:13px;font-weight:700}
-.cat-row-info span{font-size:10px;color:var(--t3)}
-.cat-del-btn{background:none;border:none;color:var(--t3);font-size:14px;cursor:pointer;padding:4px 5px;border-radius:6px}
-.dash-cam-btn{display:flex;align-items:center;gap:12px;background:linear-gradient(135deg,#4ADE8018,#22C55E10);border:1.5px solid #4ADE8033;border-radius:14px;padding:14px;width:100%;cursor:pointer;font-family:var(--sans);text-align:left;transition:.15s}
-.dash-cam-btn:active{transform:scale(.97)}
-.gap8{display:flex;flex-direction:column;gap:8px}
-.month-hdr{font-size:9px;font-weight:700;color:var(--t3);letter-spacing:.8px;text-transform:uppercase;padding:3px 2px 7px}
-.set-row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--b)}
-.set-row:last-child{border-bottom:none}
-.set-info p{font-size:13px;font-weight:700}
-.set-info span{font-size:10px;color:var(--t3);margin-top:1px;display:block}
-.empty{text-align:center;padding:32px 16px;color:var(--t3)}
-.empty .ei{font-size:36px;margin-bottom:8px}
-.empty p{font-size:12px;line-height:1.6}
-#ocr-loading{position:fixed;inset:0;background:rgba(0,0,0,.88);backdrop-filter:blur(6px);z-index:300;display:none;flex-direction:column;align-items:center;justify-content:center;gap:18px}
-#ocr-loading p{color:var(--t);font-size:14px;font-weight:600;text-align:center;padding:0 30px}
-.ocr-spin{width:48px;height:48px;border:4px solid var(--b2);border-top-color:var(--acc);border-radius:50%;animation:spinning .8s linear infinite}
-@keyframes spinning{to{transform:rotate(360deg)}}
-.toast{position:fixed;bottom:calc(env(safe-area-inset-bottom)+86px);left:50%;transform:translateX(-50%);background:var(--s3);border:1px solid var(--b2);border-radius:12px;padding:10px 16px;font-size:12px;font-weight:600;z-index:999;display:none;white-space:nowrap;box-shadow:0 6px 24px #0008;max-width:300px;text-align:center}
-.toast-err{border-color:#F8717155;background:#F8717115;color:var(--red)}
-#login-container{position:fixed;inset:0;background:var(--bg);z-index:400;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px}
-.login-card{background:var(--s1);border:1px solid var(--b);border-radius:24px;padding:24px;width:100%;max-width:320px}
-.login-card h2{font-size:18px;margin-bottom:20px;text-align:center}
-.login-card input{background:var(--s2);border:1.5px solid var(--b);border-radius:12px;padding:12px;width:100%;margin-bottom:12px;color:var(--t);font-size:14px}
-.login-card button{width:100%;margin-top:8px}
-#user-info{display:flex;align-items:center;gap:8px}
-#user-email{font-size:11px;color:var(--t3);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-@media(min-width:480px){body{box-shadow:0 0 60px #000a}}
+.logo-box{width:32px;height:32px;background:#4ADE80;border-radius:9px;display:flex;align-items:center;justify-content:center}
+.btn{background:#1B1C24;border:1px solid #2A2B3A;border-radius:10px;padding:10px 16px;color:#ECEDF5;cursor:pointer}
+.btn-primary{background:#4ADE80;color:#081A0D}
+.cam-container{position:relative;width:100%;background:#000;min-height:300px}
+video{width:100%;display:block}
+.cam-overlay{position:absolute;top:0;left:0;right:0;bottom:0;border:2px solid #4ADE80;border-radius:12px;margin:20px;pointer-events:none}
+.qr-guide{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:200px;height:200px;border:2px solid #4ADE80;border-radius:12px;box-shadow:0 0 0 999px rgba(0,0,0,0.5);pointer-events:none}
+.status{padding:12px;text-align:center;font-size:13px}
+.toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#22232E;border-radius:12px;padding:10px 16px;font-size:12px;display:none;z-index:100}
+.form-container{padding:16px}
+input,select{background:#1B1C24;border:1px solid #2A2B3A;border-radius:10px;padding:12px;color:#ECEDF5;width:100%;margin-bottom:12px}
+.form-row{display:flex;gap:12px;margin-bottom:12px}
+.form-row .field{flex:1}
+button:active{transform:scale(0.97)}
 </style>
 </head>
 <body>
 
-<header>
-  <div class="logo"><div class="logo-box">📦</div><h1>Stock<span>Scan</span></h1></div>
-  <div class="hdr-right">
-    <div id="user-info" style="display:none"><span id="user-email"></span><div class="icon-btn" onclick="window.logout()" title="Sair">🚪</div></div>
-    <div class="icon-btn" onclick="window.openImportFile()" title="Importar PDF/Imagem">📂</div>
-    <div class="icon-btn" onclick="window.exportData()" title="Exportar JSON">⬇</div>
-    <div class="icon-btn" onclick="window.openOCRScan()" title="Digitalizar fatura">📷</div>
-  </div>
-</header>
-
-<div class="main" id="main-scroll">
-  <div class="page on" id="p-dash">
-    <div class="stat-grid" id="stat-grid"></div>
-    <div id="dash-scan-btn"></div>
-    <div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div class="card-title" style="margin:0">Despesas 30 dias</div><span id="spark30-total"></span></div><div style="position:relative;height:100px"><canvas id="spark30"></canvas></div></div>
-    <div class="card" id="dash-alerts"></div>
-    <div class="card"><div class="card-title">Top artigos por custo</div><div id="dash-top-art"></div></div>
-  </div>
-  <div class="page" id="p-inv"><div class="srch">🔍 <input type="text" id="inv-srch" placeholder="Fornecedor, nº fatura..." oninput="window.renderInvoiceList()"></div><div class="chips" id="inv-filter-chips"></div><div class="gap8" id="inv-list"></div></div>
-  <div class="page" id="p-art"><div class="srch">🔍 <input type="text" id="art-srch" placeholder="Nome do artigo..." oninput="window.renderArticleList()"></div><div class="chips" id="art-filter-chips"></div><div class="gap8" id="art-list"></div></div>
-  <div class="page" id="p-alerts"><div style="display:flex;align-items:center;justify-content:space-between;padding:0 2px 4px"><div class="card-title" style="margin:0">Alertas de variação de preço</div><button class="btn btn-ghost" style="flex:0;padding:7px 12px;font-size:11px" onclick="window.resolveAllAlerts()">✓ Todos</button></div><div class="gap8" id="alerts-list"></div></div>
-  <div class="page" id="p-cfg">
-    <div class="card"><div class="card-title">Negócio</div><div class="fg" style="gap:9px;margin-bottom:12px"><div class="fi full"><label>Nome da empresa</label><input id="cfg-biz" type="text" placeholder="Don Tasko Lda."></div><div class="fi full"><label>NIF</label><input id="cfg-nif" type="text" inputmode="numeric" placeholder="509 000 000"></div><div class="fi full"><label>Limiar de alerta de preço (%)</label><input id="cfg-alert-pct" type="number" min="1" max="100" step="1" inputmode="decimal" placeholder="10"></div></div><button class="btn btn-prim" style="width:100%" onclick="window.saveCfg()">Guardar</button></div>
-    <div class="card"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><div class="card-title" style="margin:0">Famílias de artigos</div><div class="icon-btn" onclick="window.openAddFamily()" style="font-size:18px;font-weight:900">+</div></div><div id="fam-list"></div></div>
-    <div class="card"><div class="card-title">Dados</div><div class="set-row"><div class="set-info"><p>Registos</p><span id="cfg-counts">—</span></div></div><div class="set-row"><div class="set-info"><p>Exportar dados</p><span>JSON para backup</span></div><button class="btn btn-ghost" style="flex:0;padding:8px 13px;font-size:12px" onclick="window.exportData()">⬇ Export</button></div><div class="set-row"><div class="set-info"><p>Sair da conta</p><span>Terminar sessão</span></div><button class="btn btn-ghost" style="flex:0;padding:8px 13px;font-size:12px" onclick="window.logout()">🚪 Sair</button></div></div>
+<div class="header">
+  <div class="logo"><div class="logo-box">📦</div><span style="font-weight:800">StockScan</span></div>
+  <div id="user-info" style="display:none;align-items:center;gap:8px">
+    <span id="user-email" style="font-size:11px;color:#9496B0"></span>
+    <button class="btn" style="padding:6px 10px" onclick="logout()">🚪</button>
   </div>
 </div>
 
-<nav class="bot-nav">
-  <button class="bn on" id="bn-dash" onclick="window.goPage('dash',this)"><span class="bn-ic">◎</span><span class="bn-lbl">Dashboard</span></button>
-  <button class="bn" id="bn-inv" onclick="window.goPage('inv',this)"><span class="bn-ic">🧾</span><span class="bn-lbl">Faturas</span></button>
-  <button class="bn" id="bn-art" onclick="window.goPage('art',this)"><span class="bn-ic">📦</span><span class="bn-lbl">Artigos</span></button>
-  <button class="bn" id="bn-alerts" onclick="window.goPage('alerts',this)"><span class="bn-ic">⚠</span><span class="bn-lbl">Alertas</span></button>
-  <button class="bn" id="bn-cfg" onclick="window.goPage('cfg',this)"><span class="bn-ic">⚙</span><span class="bn-lbl">Config</span></button>
-</nav>
-
-<div id="login-container">
-  <div class="login-card">
-    <h2>🔐 StockScan Cloud</h2>
-    <input type="email" id="login-email" placeholder="Email" autocomplete="email">
-    <input type="password" id="login-password" placeholder="Palavra-passe" autocomplete="current-password">
-    <button class="btn btn-prim" onclick="window.login()">Entrar</button>
-    <button class="btn btn-ghost" style="margin-top:8px" onclick="window.signup()">Criar conta gratuita</button>
+<div id="login-screen" style="padding:24px">
+  <div style="background:#13141A;border-radius:24px;padding:24px">
+    <h2 style="margin-bottom:20px">🔐 StockScan Cloud</h2>
+    <input type="email" id="login-email" placeholder="Email">
+    <input type="password" id="login-password" placeholder="Password">
+    <button class="btn btn-primary" style="width:100%;margin-bottom:8px" onclick="login()">Entrar</button>
+    <button class="btn" style="width:100%" onclick="signup()">Criar conta</button>
   </div>
 </div>
 
-<div id="cam-wrap">
-  <div class="cam-top"><button class="cam-top-btn" onclick="window.closeCam()">✕</button><button class="cam-top-btn" onclick="window.switchCam()">🔄</button></div>
-  <div class="cam-frame"><video id="cam-video" autoplay playsinline muted></video><canvas id="cam-canvas"></canvas><div class="cam-corners"><div class="cor tl"></div><div class="cor tr"></div><div class="cor bl"></div><div class="cor br"></div><div class="slr"></div></div></div>
-  <div class="cam-bottom"><p id="cam-hint">Aponte para o QR Code AT da fatura</p><p id="cam-st">A iniciar câmara...</p><button class="cam-shutter" id="cam-shutter" style="display:flex" onclick="window.captureQRFromCamera()">📷 Ler QR</button><button style="margin-top:4px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:#fff;padding:9px 20px;border-radius:11px;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--sans)" onclick="window.closeCam();window.openInvoiceForm({items:[]})">✏️ Manual</button></div>
+<div id="app-content" style="display:none">
+  <div class="cam-container">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="canvas" style="display:none"></canvas>
+    <div class="qr-guide"></div>
+  </div>
+  <div class="status" id="status">📷 Aponte para o QR Code (canto superior direito da fatura)</div>
+  
+  <div style="display:flex;gap:8px;padding:0 16px;margin-bottom:16px">
+    <button class="btn" style="flex:1" onclick="switchCamera()">🔄 Trocar câmara</button>
+    <button class="btn btn-primary" style="flex:1" onclick="startScanning()">🔍 Ler QR</button>
+    <button class="btn" style="flex:1" onclick="openManualForm()">✏️ Manual</button>
+  </div>
+  
+  <div class="form-container" id="form-container" style="display:none">
+    <h3 id="form-title" style="margin-bottom:16px">Nova Fatura</h3>
+    <input type="text" id="supplier" placeholder="Fornecedor">
+    <div class="form-row">
+      <div class="field"><input type="text" id="nif" placeholder="NIF"></div>
+      <div class="field"><input type="text" id="num" placeholder="Nº Fatura"></div>
+    </div>
+    <div class="form-row">
+      <div class="field"><input type="date" id="date"></div>
+      <div class="field"><input type="number" id="total" step="0.01" placeholder="Total (€)"></div>
+    </div>
+    <div class="form-row">
+      <div class="field"><input type="number" id="vat" step="0.01" placeholder="IVA (€)"></div>
+      <div class="field"><input type="text" id="atcud" placeholder="ATCUD"></div>
+    </div>
+    <button class="btn btn-primary" style="width:100%" onclick="saveInvoice()">✓ Guardar Fatura</button>
+  </div>
 </div>
-
-<div id="ocr-loading"><div class="ocr-spin"></div><p>🔍 A procurar QR Code na imagem...<br><span style="font-size:12px;color:var(--t3);font-weight:400">A segurar a câmara estável por 2 segundos</span></p></div>
-
-<div class="overlay" id="m-invoice"><div class="sheet"><div class="sh-handle"></div><div class="sh-hdr"><h3 id="m-inv-title">Nova Fatura</h3><button class="sh-close" onclick="window.closeSheet('m-invoice')">✕</button></div><div class="sh-body"><div class="fg" id="inv-form-fields" style="margin-bottom:14px"></div><div class="card-title">Artigos</div><div id="form-items-list" style="margin-bottom:10px"></div><button class="btn btn-ghost" style="width:100%;font-size:12px;margin-bottom:4px" onclick="window.openAddItemManual()">+ Adicionar artigo manualmente</button></div><div class="sh-footer"><button class="btn btn-ghost" onclick="window.closeSheet('m-invoice')">Cancelar</button><button class="btn btn-prim" id="save-inv-btn">✓ Guardar</button></div></div></div>
-<div class="overlay" id="m-invdetail"><div class="sheet"><div class="sh-handle"></div><div class="sh-hdr"><h3 id="d-inv-num">Fatura</h3><button class="sh-close" onclick="window.closeSheet('m-invdetail')">✕</button></div><div class="sh-body" id="d-inv-body"></div><div class="sh-footer" id="d-inv-footer"></div></div></div>
-<div class="overlay" id="m-artdetail"><div class="sheet"><div class="sh-handle"></div><div class="sh-hdr"><h3 id="d-art-name">Artigo</h3><button class="sh-close" onclick="window.closeSheet('m-artdetail')">✕</button></div><div class="sh-body" id="d-art-body"></div></div></div>
-<div class="overlay" id="m-editart"><div class="sheet"><div class="sh-handle"></div><div class="sh-hdr"><h3>Editar Artigo</h3><button class="sh-close" onclick="window.closeSheet('m-editart')">✕</button></div><div class="sh-body"><div class="fg" style="margin-bottom:14px"><div class="fi full"><label>Nome</label><input id="ea-name" type="text"></div><div class="fi"><label>Unidade</label><input id="ea-unit" type="text" placeholder="un/kg/L/cx"></div><div class="fi"><label>EAN/Código</label><input id="ea-ean" type="text" inputmode="numeric"></div></div><div class="card-title" style="margin-bottom:8px">Família</div><div class="fam-grid" id="ea-fam-grid"></div></div><div class="sh-footer"><button class="btn btn-ghost" onclick="window.closeSheet('m-editart')">Cancelar</button><button class="btn btn-prim" onclick="window.saveArticleEdit()">✓ Guardar</button></div></div></div>
-<div class="overlay" id="m-additem"><div class="sheet"><div class="sh-handle"></div><div class="sh-hdr"><h3>Adicionar Artigo</h3><button class="sh-close" onclick="window.closeSheet('m-additem')">✕</button></div><div class="sh-body"><div class="fg"><div class="fi full"><label>Nome do artigo *</label><input id="ai-name" type="text" placeholder="Ex: Frango inteiro"></div><div class="fi"><label>Qtd.</label><input id="ai-qty" type="number" value="1" step="0.01" inputmode="decimal" oninput="window.calcItemTotal()"></div><div class="fi"><label>Unidade</label><input id="ai-unit" type="text" placeholder="kg" value="un"></div><div class="fi"><label>Preço unit. (€)</label><input id="ai-price" type="number" step="0.01" inputmode="decimal" placeholder="0.00" oninput="window.calcItemTotal()"></div><div class="fi"><label>Total (€)</label><input id="ai-total" type="number" step="0.01" inputmode="decimal" placeholder="0.00"></div><div class="fi"><label>IVA (%)</label><select id="ai-vatrate"><option value="6">6%</option><option value="13">13%</option><option value="23" selected>23%</option></select></div></div></div><div class="sh-footer"><button class="btn btn-ghost" onclick="window.closeSheet('m-additem')">Cancelar</button><button class="btn btn-prim" onclick="window.saveFormItem()">+ Adicionar</button></div></div></div>
-<div class="overlay" id="m-fampicker"><div class="sheet"><div class="sh-handle"></div><div class="sh-hdr"><h3>Seleccionar Família</h3><button class="sh-close" onclick="window.closeSheet('m-fampicker')">✕</button></div><div class="sh-body"><input type="hidden" id="fam-picker-target"><div class="fam-grid" id="fam-picker-grid"></div></div></div></div>
-<div class="overlay" id="m-family"><div class="sheet"><div class="sh-handle"></div><div class="sh-hdr"><h3 id="m-fam-title">Nova Família</h3><button class="sh-close" onclick="window.closeSheet('m-family')">✕</button></div><div class="sh-body"><div class="fg"><div class="fi full"><label>Nome</label><input id="fam-name" type="text" placeholder="Ex: Carnes"></div><div class="fi"><label>Emoji</label><input id="fam-icon" type="text" placeholder="🥩" maxlength="2"></div><div class="fi"><label>Cor</label><select id="fam-color"><option value="#4ADE80">🟢 Verde</option><option value="#60A5FA">🔵 Azul</option><option value="#FACC15">🟡 Amarelo</option><option value="#F87171">🔴 Vermelho</option><option value="#C084FC">🟣 Roxo</option><option value="#FB923C">🟠 Laranja</option><option value="#34D399">💚 Esmeralda</option><option value="#F472B6">🩷 Rosa</option><option value="#94A3B8">⚪ Cinzento</option></select></div></div></div><div class="sh-footer"><button class="btn btn-ghost" onclick="window.closeSheet('m-family')">Cancelar</button><button class="btn btn-prim" onclick="window.saveFamily()">Guardar</button></div></div></div>
-<div class="overlay" id="m-pricealert"><div class="sheet"><div class="sh-handle"></div><div class="sh-hdr"><h3>⚠ Variação de preço</h3><button class="sh-close" onclick="window.closeSheet('m-pricealert')">✕</button></div><div class="sh-body" id="price-alert-body"></div><div class="sh-footer"><button class="btn btn-prim" onclick="window.closeSheet('m-pricealert')">Entendido</button></div></div></div>
-<div class="overlay" id="m-import-review"><div class="sheet" style="max-height:96vh"><div class="sh-handle"></div><div class="sh-hdr"><h3>📂 Rever Importação</h3><button class="sh-close" onclick="window.closeSheet('m-import-review')">✕</button></div><div class="sh-body"><div id="ir-summary"></div><div id="ir-invoices"></div></div><div class="sh-footer" style="position:sticky;bottom:0;background:var(--s1);padding:12px 16px;border-top:1px solid var(--b)"><button class="btn btn-ghost" onclick="window.closeSheet('m-import-review')">Cancelar</button><button class="btn btn-prim" onclick="window.confirmImport()">✓ Confirmar e Guardar</button></div></div></div>
-<div class="overlay" id="m-qr-choice"><div class="sheet"><div class="sh-handle"></div><div class="sh-hdr"><h3>✅ QR Code lido</h3><button class="sh-close" onclick="window.closeSheet('m-qr-choice')">✕</button></div><div class="sh-body"><p style="font-size:12px;color:var(--t3);margin-bottom:12px">Dados do QR Code AT extraídos com sucesso.</p><div id="qr-choice-info"></div><div style="display:flex;flex-direction:column;gap:9px"><button class="btn btn-prim" style="width:100%;padding:14px" onclick="window.qrChoicePhoto()">📷 Fotografar fatura para ler artigos (OCR)</button><button class="btn btn-ghost" style="width:100%" onclick="window.qrChoiceDirect()">✏️ Só usar dados do QR (sem artigos)</button></div></div></div></div>
 
 <div id="toast" class="toast"></div>
 
 <script>
-// ============================================================
 // SUPABASE
-// ============================================================
 const SUPABASE_URL = 'https://clhhnzgjcrxezxhvguiy.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_L8_BSQnaKtl0wdlcA645vA__HHhozVn';
-const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// ============================================================
-// ESTADO GLOBAL
-// ============================================================
 let currentUser = null;
-let invoices = [];
-let articles = [];
-let families = [];
-let alerts = [];
-let userConfig = { biz: '', nif: '', alertPct: 10 };
-let invFilter = 'todas';
-let artFilter = 'todas';
-let formItems = [];
-let editInvId = null;
-let editArtId = null;
-let editFamId = null;
-let camStream = null, camFacing = 'environment';
-let pendingQRData = null;
-let importBatch = [];
+let stream = null;
+let scanning = false;
+let scanInterval = null;
+let currentFacing = 'environment';
 
-// ============================================================
-// UTILITÁRIOS
-// ============================================================
-const uid = () => Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
-const eur = v => new Intl.NumberFormat('pt-PT',{style:'currency',currency:'EUR'}).format(+v||0);
-const fdate = d => { try{ return new Date(d).toLocaleDateString('pt-PT',{day:'2-digit',month:'short',year:'numeric'}); }catch{ return d||''; } };
-const famById = id => families.find(f=>f.id===id) || { name:'—', icon:'📦', color:'#888' };
-function toast(msg, dur=3200, type=''){
-  const t=document.getElementById('toast');
-  if(!t) return;
-  t.textContent=msg;
-  t.className='toast'+(type?' toast-'+type:'');
-  t.style.display='block';
-  clearTimeout(t._t);
-  t._t=setTimeout(()=>t.style.display='none',dur);
-}
-function openSheet(id){ document.getElementById(id).classList.add('on'); }
-function closeSheet(id){ document.getElementById(id).classList.remove('on'); }
-function showLoading(show){ const el=document.getElementById('ocr-loading'); if(el) el.style.display=show?'flex':'none'; }
+// Elementos
+const loginScreen = document.getElementById('login-screen');
+const appContent = document.getElementById('app-content');
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const statusDiv = document.getElementById('status');
+const formContainer = document.getElementById('form-container');
+const formTitle = document.getElementById('form-title');
 
 // ============================================================
 // AUTENTICAÇÃO
 // ============================================================
-window.login = async function() {
+async function login() {
   const email = document.getElementById('login-email').value;
   const password = document.getElementById('login-password').value;
-  if (!email || !password) { toast('Preencha email e password', 'err'); return; }
-  const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
-  if (error) { toast('Erro: ' + error.message, 'err'); return; }
-  toast('✅ Login efetuado!');
-  await onAuthSuccess(data.user);
-};
-window.signup = async function() {
+  if (!email || !password) { toast('Preencha email e password'); return; }
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) { toast('Erro: ' + error.message); return; }
+  await loadUser();
+}
+async function signup() {
   const email = document.getElementById('login-email').value;
   const password = document.getElementById('login-password').value;
-  if (!email || !password) { toast('Preencha email e password', 'err'); return; }
-  if (password.length < 6) { toast('Password com pelo menos 6 caracteres', 'err'); return; }
-  const { data, error } = await supabaseClient.auth.signUp({ email, password });
-  if (error) { toast('Erro: ' + error.message, 'err'); return; }
-  toast('✅ Conta criada! Verifique o email para confirmar.');
-};
-window.logout = async function() {
-  await supabaseClient.auth.signOut();
+  if (!email || !password) { toast('Preencha email e password'); return; }
+  const { error } = await supabase.auth.signUp({ email, password });
+  if (error) { toast('Erro: ' + error.message); return; }
+  toast('✅ Conta criada! Verifique o email.');
+}
+async function logout() {
+  await supabase.auth.signOut();
   currentUser = null;
-  document.getElementById('login-container').style.display = 'flex';
-  document.getElementById('user-info').style.display = 'none';
-  document.querySelector('header').style.opacity = '0.5';
-  toast('👋 Sessão terminada');
-};
-async function onAuthSuccess(user) {
-  currentUser = user;
-  document.getElementById('login-container').style.display = 'none';
-  document.querySelector('header').style.opacity = '1';
-  document.getElementById('user-info').style.display = 'flex';
-  document.getElementById('user-email').textContent = user.email.split('@')[0];
-  await loadUserData();
-  renderDash();
-  window.renderInvoiceList();
-  window.renderArticleList();
-  window.renderAlerts();
-  window.renderConfig();
+  loginScreen.style.display = 'flex';
+  appContent.style.display = 'none';
+  stopCamera();
 }
-
-async function loadUserData() {
-  if (!currentUser) return;
-  const { data: famData } = await supabaseClient.from('families').select('*').eq('user_id', currentUser.id);
-  families = famData || [];
-  if (families.length === 0) {
-    const defaultFams = [
-      { id: 'f1', name: 'Carnes', icon: '🥩', color: '#F87171' },
-      { id: 'f2', name: 'Peixe', icon: '🐟', color: '#60A5FA' },
-      { id: 'f3', name: 'Laticínios', icon: '🧀', color: '#FACC15' },
-      { id: 'f4', name: 'Bebidas', icon: '🍷', color: '#C084FC' },
-      { id: 'f5', name: 'Mercearia', icon: '🛒', color: '#4ADE80' },
-      { id: 'f6', name: 'Legumes', icon: '🥦', color: '#34D399' },
-      { id: 'f7', name: 'Limpeza', icon: '🧹', color: '#94A3B8' },
-      { id: 'f8', name: 'Outros', icon: '📦', color: '#FB923C' },
-    ];
-    for (const fam of defaultFams) {
-      await supabaseClient.from('families').insert({ ...fam, user_id: currentUser.id });
-    }
-    const { data: newFams } = await supabaseClient.from('families').select('*').eq('user_id', currentUser.id);
-    families = newFams || [];
+async function loadUser() {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (user) {
+    currentUser = user;
+    loginScreen.style.display = 'none';
+    appContent.style.display = 'block';
+    document.getElementById('user-info').style.display = 'flex';
+    document.getElementById('user-email').textContent = user.email.split('@')[0];
+    startCamera();
   }
-  const { data: artData } = await supabaseClient.from('articles').select('*').eq('user_id', currentUser.id);
-  const { data: priceData } = await supabaseClient.from('article_prices').select('*').eq('user_id', currentUser.id);
-  articles = (artData || []).map(art => ({
-    ...art,
-    prices: (priceData || []).filter(p => p.article_id === art.id).sort((a,b) => new Date(a.date) - new Date(b.date))
-  }));
-  const { data: invData } = await supabaseClient.from('invoices').select('*').eq('user_id', currentUser.id);
-  const { data: itemData } = await supabaseClient.from('invoice_items').select('*').eq('user_id', currentUser.id);
-  invoices = (invData || []).map(inv => ({
-    ...inv,
-    items: (itemData || []).filter(it => it.invoice_id === inv.id)
-  }));
-  const { data: alertData } = await supabaseClient.from('price_alerts').select('*').eq('user_id', currentUser.id);
-  alerts = alertData || [];
-  const { data: settings } = await supabaseClient.from('user_settings').select('*').eq('user_id', currentUser.id).single();
-  if (settings) userConfig = { biz: settings.biz_name, nif: settings.nif, alertPct: settings.alert_pct };
 }
 
 // ============================================================
-// PARSING DO QR CODE (FORMATO AT)
+// CÂMARA E QR CODE
 // ============================================================
+async function startCamera() {
+  stopCamera();
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { exact: currentFacing }, width: { ideal: 1280 }, height: { ideal: 720 } }
+    });
+    video.srcObject = stream;
+    await video.play();
+    statusDiv.innerHTML = '📷 Câmara ativa. Clique em "Ler QR" e aponte para o código.';
+  } catch(e) {
+    // Fallback
+    stream = await navigator.mediaDevices.getUserMedia({ video: true });
+    video.srcObject = stream;
+    await video.play();
+  }
+}
+function stopCamera() {
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  if (scanInterval) { clearInterval(scanInterval); scanInterval = null; }
+}
+function switchCamera() {
+  currentFacing = currentFacing === 'environment' ? 'user' : 'environment';
+  startCamera();
+}
+function startScanning() {
+  if (scanning) return;
+  scanning = true;
+  statusDiv.innerHTML = '🔍 A ler QR Code... mantenha estável';
+  
+  if (scanInterval) clearInterval(scanInterval);
+  scanInterval = setInterval(() => {
+    if (!video.videoWidth || !video.videoHeight) return;
+    
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    
+    // Tenta com várias inversões
+    let code = jsQR(imageData.data, canvas.width, canvas.height, { inversionAttempts: 'attemptBoth' });
+    if (!code) {
+      // Tenta com imagem invertida
+      const inverted = new Uint8ClampedArray(imageData.data.length);
+      for (let i = 0; i < imageData.data.length; i += 4) {
+        inverted[i] = 255 - imageData.data[i];
+        inverted[i+1] = 255 - imageData.data[i+1];
+        inverted[i+2] = 255 - imageData.data[i+2];
+        inverted[i+3] = imageData.data[i+3];
+      }
+      code = jsQR(inverted, canvas.width, canvas.height, { inversionAttempts: 'attemptBoth' });
+    }
+    
+    if (code) {
+      clearInterval(scanInterval);
+      scanInterval = null;
+      scanning = false;
+      processQRData(code.data);
+    }
+  }, 500);
+}
+
+function processQRData(qrString) {
+  console.log('QR lido:', qrString);
+  const data = parseATQR(qrString);
+  if (!data.nif && !data.num && !data.total) {
+    toast('❌ QR inválido. Tente novamente.');
+    statusDiv.innerHTML = '❌ QR não reconhecido. Tente outra foto.';
+    return;
+  }
+  
+  toast('✅ QR lido com sucesso!');
+  statusDiv.innerHTML = '✅ QR detetado! Preencha os restantes campos.';
+  
+  // Preenche formulário com dados do QR
+  document.getElementById('nif').value = data.nif || '';
+  document.getElementById('num').value = data.num || '';
+  document.getElementById('date').value = data.date || new Date().toISOString().slice(0,10);
+  document.getElementById('total').value = data.total || '';
+  document.getElementById('vat').value = data.vat || '';
+  document.getElementById('atcud').value = data.atcud || '';
+  
+  formTitle.textContent = 'Nova Fatura (QR lido)';
+  formContainer.style.display = 'block';
+}
+
 function parseATQR(raw) {
   const r = {};
-  if (!raw) return r;
   const pairs = raw.split('*');
   for (const pair of pairs) {
     const i = pair.indexOf(':');
@@ -369,9 +240,7 @@ function parseATQR(raw) {
     const v = pair.slice(i + 1).trim();
     if (k === 'A') r.nif = v;
     else if (k === 'B') r.nifClient = v;
-    else if (k === 'F' && v.length === 8) {
-      r.date = v.slice(0, 4) + '-' + v.slice(4, 6) + '-' + v.slice(6, 8);
-    }
+    else if (k === 'F' && v.length === 8) r.date = v.slice(0,4)+'-'+v.slice(4,6)+'-'+v.slice(6,8);
     else if (k === 'G') r.num = v;
     else if (k === 'H') r.atcud = v;
     else if (k === 'N') r.vat = parseFloat(v) || 0;
@@ -380,641 +249,62 @@ function parseATQR(raw) {
   return r;
 }
 
-// ============================================================
-// DETECÇÃO DE QR CODE EM IMAGEM (com rotação)
-// ============================================================
-function detectQRCode(imageData, width, height) {
-  // Tenta com orientação normal
-  let code = jsQR(imageData, width, height, { inversionAttempts: 'attemptBoth' });
-  if (code) return code;
-  
-  // Tenta com inversão de cores
-  const invertedData = new Uint8ClampedArray(imageData.length);
-  for (let i = 0; i < imageData.length; i += 4) {
-    invertedData[i] = 255 - imageData[i];
-    invertedData[i+1] = 255 - imageData[i+1];
-    invertedData[i+2] = 255 - imageData[i+2];
-    invertedData[i+3] = imageData[i+3];
-  }
-  code = jsQR(invertedData, width, height, { inversionAttempts: 'attemptBoth' });
-  if (code) return code;
-  
-  return null;
+function openManualForm() {
+  formTitle.textContent = 'Nova Fatura (Manual)';
+  document.getElementById('supplier').value = '';
+  document.getElementById('nif').value = '';
+  document.getElementById('num').value = '';
+  document.getElementById('date').value = new Date().toISOString().slice(0,10);
+  document.getElementById('total').value = '';
+  document.getElementById('vat').value = '';
+  document.getElementById('atcud').value = '';
+  formContainer.style.display = 'block';
+  statusDiv.innerHTML = '📝 Preencha os dados da fatura';
 }
 
-// ============================================================
-// FUNÇÃO PRINCIPAL: LER QR DE QUALQUER IMAGEM/PDF
-// ============================================================
-async function extractQRFromImage(imageElement) {
-  return new Promise((resolve) => {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    
-    canvas.width = imageElement.width;
-    canvas.height = imageElement.height;
-    ctx.drawImage(imageElement, 0, 0);
-    
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const code = detectQRCode(imageData.data, canvas.width, canvas.height);
-    
-    if (code) {
-      resolve(parseATQR(code.data));
-    } else {
-      resolve(null);
-    }
-  });
-}
-
-async function extractQRFromDataURL(dataUrl) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = async () => {
-      const result = await extractQRFromImage(img);
-      resolve(result);
-    };
-    img.onerror = reject;
-    img.src = dataUrl;
-  });
-}
-
-// ============================================================
-// CÂMARA - LEITURA DE QR COM ESTABILIZAÇÃO
-// ============================================================
-let qrScanInterval = null;
-let lastQRResult = null;
-
-function startQRScanning() {
-  const video = document.getElementById('cam-video');
-  const canvas = document.getElementById('cam-canvas');
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  let attempts = 0;
-  let stableCount = 0;
-  let lastCode = null;
+async function saveInvoice() {
+  if (!currentUser) return;
   
-  if (qrScanInterval) clearInterval(qrScanInterval);
-  
-  qrScanInterval = setInterval(() => {
-    if (!video.videoWidth || !video.videoHeight) return;
-    
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const code = detectQRCode(imageData.data, canvas.width, canvas.height);
-    
-    if (code) {
-      const qrData = parseATQR(code.data);
-      if (qrData.nif || qrData.num || qrData.total) {
-        // Verifica se é o mesmo código estável
-        const codeKey = `${qrData.nif}|${qrData.num}|${qrData.total}`;
-        if (lastCode === codeKey) {
-          stableCount++;
-          if (stableCount >= 3) { // Estável por ~1.5 segundos
-            clearInterval(qrScanInterval);
-            qrScanInterval = null;
-            document.getElementById('cam-st').textContent = '✅ QR detetado!';
-            setTimeout(() => {
-              window.closeCam();
-              showQRDataModal(qrData);
-            }, 300);
-          }
-        } else {
-          lastCode = codeKey;
-          stableCount = 1;
-          document.getElementById('cam-st').textContent = '📷 QR detetado... mantenha estável';
-        }
-      }
-    } else {
-      stableCount = 0;
-      lastCode = null;
-      document.getElementById('cam-st').textContent = attempts < 30 ? '🔍 À procura do QR Code...' : '📐 Aproxime o QR Code';
-    }
-    attempts++;
-  }, 500);
-}
-
-window.captureQRFromCamera = function() {
-  const video = document.getElementById('cam-video');
-  if (!video.videoWidth || !video.videoHeight) {
-    toast('Aguarde a câmara iniciar...', 2000);
-    return;
-  }
-  startQRScanning();
-  toast('🔍 A ler QR Code... mantenha a câmara estável', 3000);
-};
-
-// ============================================================
-// IMPORTAÇÃO DE FICHEIROS (PDF/Imagem) - LÊ QR CODE
-// ============================================================
-window.openImportFile = function() {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = '.pdf,.jpg,.jpeg,.png,.webp,image/*,application/pdf';
-  input.multiple = true;
-  input.onchange = async (e) => {
-    const files = Array.from(e.target.files);
-    if (!files.length) return;
-    
-    toast(`📄 A processar ${files.length} ficheiro(s)...`, 30000);
-    showLoading(true);
-    
-    const results = [];
-    
-    for (const file of files) {
-      try {
-        console.log(`Processando: ${file.name}`);
-        toast(`🔍 A ler ${file.name}...`, 5000);
-        
-        // Converte para DataURL
-        const dataUrl = await fileToDataUrl(file);
-        let imageDataUrl = dataUrl;
-        
-        // Se for PDF, converte para imagem
-        if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
-          imageDataUrl = await pdfToImageDataUrl(dataUrl);
-          if (!imageDataUrl) throw new Error('PDF não convertido');
-        }
-        
-        // Extrai QR Code da imagem
-        const qrData = await extractQRFromDataURL(imageDataUrl);
-        
-        if (qrData && (qrData.nif || qrData.num || qrData.total)) {
-          console.log('QR encontrado:', qrData);
-          qrData.photo = imageDataUrl;
-          qrData.source = 'qr_import';
-          qrData._filename = file.name;
-          results.push(qrData);
-          toast(`✅ ${file.name}: QR lido com sucesso!`, 3000);
-        } else {
-          console.warn(`Nenhum QR encontrado em: ${file.name}`);
-          results.push({ 
-            _filename: file.name, 
-            _failed: true, 
-            supplier: '', nif: '', num: '', 
-            date: new Date().toISOString().slice(0,10),
-            total: 0, vat: 0, atcud: '',
-            items: [], 
-            source: 'import', 
-            photo: imageDataUrl 
-          });
-          toast(`⚠️ ${file.name}: Nenhum QR Code encontrado.`, 3000);
-        }
-        
-      } catch(err) {
-        console.error(`Erro ao processar ${file.name}:`, err);
-        results.push({ 
-          _filename: file.name, 
-          _failed: true, 
-          items: [], 
-          source: 'import',
-          supplier: '', nif: '', num: '', 
-          date: new Date().toISOString().slice(0,10),
-          total: 0, vat: 0
-        });
-      }
-    }
-    
-    showLoading(false);
-    
-    if (!results.length) {
-      toast('❌ Nenhum QR Code encontrado nas imagens', 'err');
-      return;
-    }
-    
-    // Se só uma fatura, abre diretamente
-    if (results.length === 1 && !results[0]._failed) {
-      window.openInvoiceForm(results[0]);
-    } else {
-      openImportReview(results);
-    }
+  const inv = {
+    id: Date.now().toString(36) + Math.random().toString(36).substr(2, 4),
+    supplier: document.getElementById('supplier').value,
+    nif: document.getElementById('nif').value,
+    num: document.getElementById('num').value,
+    date: document.getElementById('date').value,
+    total: parseFloat(document.getElementById('total').value) || 0,
+    vat: parseFloat(document.getElementById('vat').value) || 0,
+    atcud: document.getElementById('atcud').value,
+    photo: null,
+    status: 'pendente',
+    user_id: currentUser.id,
+    items: []
   };
-  input.click();
-};
-
-function showQRDataModal(qrData) {
-  document.getElementById('qr-choice-info').innerHTML = `
-    <div style="background:var(--acc-dim);padding:12px;border-radius:12px;margin-bottom:12px">
-      <div style="font-size:11px;color:var(--t3);margin-bottom:4px">✅ QR Code lido com sucesso!</div>
-      <div style="font-size:13px;font-weight:700;font-family:var(--mono)">Nº: ${qrData.num || '—'}</div>
-      <div style="font-size:13px;font-weight:700;font-family:var(--mono)">Total: ${eur(qrData.total || 0)}</div>
-      <div style="font-size:11px;color:var(--t3)">NIF: ${qrData.nif || '—'}</div>
-    </div>`;
-  pendingQRData = qrData;
-  openSheet('m-qr-choice');
-}
-
-window.qrChoiceDirect = function() {
-  closeSheet('m-qr-choice');
-  const data = pendingQRData || {};
-  window.openInvoiceForm({
-    supplier: '',
-    nif: data.nif || '',
-    nifClient: data.nifClient || '',
-    num: data.num || '',
-    date: data.date || new Date().toISOString().slice(0,10),
-    total: data.total || 0,
-    vat: data.vat || 0,
-    atcud: data.atcud || '',
-    items: [],
-    source: 'qr'
-  });
-  pendingQRData = null;
-};
-
-window.qrChoicePhoto = function() {
-  closeSheet('m-qr-choice');
-  toast('📷 Para extrair artigos, use o modo manual.', 3000);
-  window.openInvoiceForm({ items: [], source: 'manual', ...(pendingQRData || {}) });
-  pendingQRData = null;
-};
-
-// ============================================================
-// UTILITÁRIOS DE FICHEIROS
-// ============================================================
-async function fileToDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = e => resolve(e.target.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-async function pdfToImageDataUrl(pdfDataUrl) {
-  if (typeof pdfjsLib === 'undefined') {
-    await new Promise((resolve, reject) => {
-      const script = document.createElement('script');
-      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-      script.onload = () => {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-        resolve();
-      };
-      script.onerror = reject;
-      document.head.appendChild(script);
-    });
-  }
   
-  try {
-    const base64Data = pdfDataUrl.split(',')[1];
-    const binaryString = atob(base64Data);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
-    
-    const loadingTask = pdfjsLib.getDocument({ data: bytes });
-    const pdf = await loadingTask.promise;
-    const page = await pdf.getPage(1);
-    const viewport = page.getViewport({ scale: 1.5 });
-    
-    const canvas = document.createElement('canvas');
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
-    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-    
-    // Reduz tamanho
-    let w = canvas.width, h = canvas.height;
-    const maxW = 1000;
-    if (w > maxW) { h = Math.round(h * maxW / w); w = maxW; }
-    const finalCanvas = document.createElement('canvas');
-    finalCanvas.width = w;
-    finalCanvas.height = h;
-    finalCanvas.getContext('2d').drawImage(canvas, 0, 0, w, h);
-    
-    return finalCanvas.toDataURL('image/jpeg', 0.85);
-  } catch (error) {
-    console.error('PDF conversion error:', error);
-    return null;
-  }
-}
-
-// ============================================================
-// DASHBOARD (resumido)
-// ============================================================
-function renderDash() {
-  const tot = invoices.reduce((a,i)=>a+(+i.total||0),0);
-  const now=new Date(); const m30=new Date(now); m30.setDate(m30.getDate()-30);
-  const inv30=invoices.filter(i=>new Date(i.date)>=m30);
-  const tot30=inv30.reduce((a,i)=>a+(+i.total||0),0);
-  const unresolvedAlerts=alerts.filter(a=>!a.resolved).length;
-  document.getElementById('stat-grid').innerHTML=`
-    <div class="stat g"><div class="stat-lbl">Total Gasto</div><div class="stat-val">${eur(tot)}</div><div class="stat-sub">${invoices.length} faturas</div></div>
-    <div class="stat b"><div class="stat-lbl">Últimos 30 dias</div><div class="stat-val">${eur(tot30)}</div><div class="stat-sub">${inv30.length} faturas</div></div>
-    <div class="stat y"><div class="stat-lbl">Artigos</div><div class="stat-val">${articles.length}</div><div class="stat-sub">${families.length} famílias</div></div>
-    <div class="stat ${unresolvedAlerts>0?'r':'g'}"><div class="stat-lbl">Alertas</div><div class="stat-val">${unresolvedAlerts}</div><div class="stat-sub">${unresolvedAlerts?'⚠ preços alterados':'✓ estável'}</div></div>`;
-  document.getElementById('dash-scan-btn').innerHTML=`<button class="dash-cam-btn" onclick="window.openOCRScan()"><span style="font-size:22px">📷</span><div><p style="font-size:13px;font-weight:700;color:var(--t)">Digitalizar QR Code</p><p style="font-size:11px;color:var(--t3);margin-top:1px">Lê QR Code da fatura</p></div><span style="font-size:18px;color:var(--acc);margin-left:auto">→</span></button>`;
-  const dashAlerts=alerts.filter(a=>!a.resolved).slice(0,5);
-  const alertsEl=document.getElementById('dash-alerts');
-  if(dashAlerts.length){
-    alertsEl.innerHTML=`<div class="card-title">⚠ Alertas de preço</div>${dashAlerts.map(a=>`<div class="alert-row"><div class="alert-ico" style="background:${a.direction==='up'?'#F8717118':'#4ADE8018'}">${a.direction==='up'?'📈':'📉'}</div><div style="flex:1;min-width:0"><p style="font-size:12px;font-weight:700">${a.article_name}</p><p style="font-size:10px;color:var(--t3)">${eur(a.old_price)} → ${eur(a.new_price)} <span style="color:${a.direction==='up'?'var(--red)':'var(--acc)'}">(${(a.pct_change>0?'+':'')+a.pct_change.toFixed(1)}%)</span></p></div><button class="btn-resolve" onclick="window.resolveAlert('${a.id}')">✓</button></div>`).join('')}<button class="btn btn-ghost" style="width:100%;margin-top:8px;font-size:12px" onclick="window.goPage('alerts',document.getElementById('bn-alerts'))">Ver todos →</button>`;
-  } else alertsEl.innerHTML='';
-}
-
-// ============================================================
-// FATURAS, ARTIGOS, ALERTAS, CONFIG (resumidos)
-// ============================================================
-window.renderInvoiceList = function() {
-  const q=(document.getElementById('inv-srch')?.value||'').toLowerCase();
-  let list=invoices.filter(i=>{ const ms=!q||(i.supplier||'').toLowerCase().includes(q)||(i.num||'').toLowerCase().includes(q); const mf=invFilter==='todas'||i.status===invFilter; return ms&&mf; }).sort((a,b)=>new Date(b.date)-new Date(a.date));
-  const wrap=document.getElementById('inv-list');
-  if(!list.length){wrap.innerHTML=`<div class="empty"><div class="ei">🧾</div><p>${invoices.length?'Sem resultados.':'Nenhuma fatura ainda.'}</p></div>`;return;}
-  const groups={};
-  list.forEach(i=>{ const d=i.date?new Date(i.date):new Date(); const k=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); const lbl=d.toLocaleDateString('pt-PT',{month:'long',year:'numeric'}); if(!groups[k])groups[k]={lbl,items:[]}; groups[k].items.push(i); });
-  wrap.innerHTML=Object.keys(groups).sort((a,b)=>b.localeCompare(a)).map(k=>`<div class="month-hdr">${groups[k].lbl}</div><div class="gap8">${groups[k].items.map(inv=>`<div class="exp-item" onclick="window.showInvoiceDetail('${inv.id}')"><div class="exp-ico" style="background:var(--acc-dim)">${inv.photo?'📷':'🧾'}</div><div class="exp-mid"><div class="exp-name">${inv.supplier||'Sem fornecedor'}</div><div class="exp-meta">${inv.num||'—'} · ${fdate(inv.date)} · ${inv.items?.length||0} artigos</div></div><div class="exp-r"><div class="exp-val">${eur(inv.total)}</div><div class="pill ${inv.status==='enviada'?'pill-ok':'pill-pend'}">${inv.status==='enviada'?'✓ enviada':'⏳ pendente'}</div></div></div>`).join('')}</div>`).join('');
-};
-
-window.showInvoiceDetail = async function(id) {
-  const inv=invoices.find(i=>i.id===id); if(!inv)return;
-  document.getElementById('d-inv-num').textContent=inv.num||'Fatura';
-  const photoSection=inv.photo?`<div style="border-radius:12px;overflow:hidden;border:1px solid var(--b);margin-bottom:14px;max-height:200px"><img src="${inv.photo}" style="width:100%;display:block;object-fit:cover;max-height:200px"></div>`:'';
-  const itemsSection=inv.items?.length?`<div class="card-title" style="margin-bottom:8px">Artigos (${inv.items.length})</div>${inv.items.map(it=>{const fam=famById(it.family_id);return`<div style="display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px solid var(--b)"><span style="font-size:16px">${fam.icon}</span><div style="flex:1"><p style="font-size:12px;font-weight:700">${it.name}</p><p style="font-size:10px;color:var(--t3)">${it.quantity} ${it.unit} × ${eur(it.unit_price)}</p></div><span style="font-size:12px;font-weight:700">${eur(it.total_price)}</span></div>`}).join('')}`:'<div class="empty" style="padding:12px"><p>Sem artigos</p></div>';
-  document.getElementById('d-inv-body').innerHTML=`${photoSection}<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">${[['Fornecedor',inv.supplier||'—'],['NIF',inv.nif||'—'],['Data',fdate(inv.date)],['Total',eur(inv.total)],['IVA',eur(inv.vat)],['ATCUD',inv.atcud||'—']].map(([l,v])=>`<div style="background:var(--s2);border-radius:10px;padding:10px"><div style="font-size:9px;font-weight:700;color:var(--t3);text-transform:uppercase;margin-bottom:3px">${l}</div><div style="font-size:12px;font-weight:600">${v}</div></div>`).join('')}</div>${itemsSection}`;
-  const footer=document.getElementById('d-inv-footer');
-  footer.innerHTML='';
-  const del=document.createElement('button');del.className='btn btn-danger';del.textContent='🗑';del.style.flex='0';del.style.padding='11px 14px';
-  del.onclick=async()=>{if(!confirm('Eliminar fatura?'))return; await supabaseClient.from('invoices').delete().eq('id',id); invoices=invoices.filter(i=>i.id!==id); closeSheet('m-invdetail'); toast('🗑 Eliminada'); renderDash(); window.renderInvoiceList(); };
-  const edit=document.createElement('button');edit.className='btn btn-ghost';edit.textContent='✏️ Editar';
-  edit.onclick=()=>{ closeSheet('m-invdetail'); window.openInvoiceForm(inv); };
-  footer.appendChild(del); footer.appendChild(edit);
-  if(inv.status==='pendente'){
-    const sb=document.createElement('button');sb.className='btn btn-prim';sb.textContent='📤';sb.style.flex='0';sb.style.padding='11px 14px';
-    sb.onclick=async()=>{ await supabaseClient.from('invoices').update({status:'enviada'}).eq('id',id); inv.status='enviada'; closeSheet('m-invdetail'); window.renderInvoiceList(); renderDash(); toast('📤 Marcada enviada!'); };
-    footer.appendChild(sb);
-  }
-  openSheet('m-invdetail');
-};
-
-window.renderArticleList = function() {
-  const q=(document.getElementById('art-srch')?.value||'').toLowerCase();
-  let list=articles.filter(a=>{ const ms=!q||(a.name||'').toLowerCase().includes(q); const mf=artFilter==='todas'||a.family_id===artFilter; return ms&&mf; }).sort((a,b)=>a.name.localeCompare(b.name));
-  const wrap=document.getElementById('art-list');
-  if(!list.length){wrap.innerHTML=`<div class="empty"><div class="ei">📦</div><p>${articles.length?'Sem resultados.':'Nenhum artigo ainda.'}</p></div>`;return;}
-  wrap.innerHTML=list.map(art=>{ const fam=famById(art.family_id); const lastPrice=art.prices[art.prices.length-1]?.price||0; return`<div class="exp-item" onclick="window.showArticleDetail('${art.id}')"><div class="exp-ico" style="background:${fam.color}18">${fam.icon}</div><div class="exp-mid"><div class="exp-name">${art.name}</div><div class="exp-meta">${fam.name} · ${art.prices.length} compras</div></div><div class="exp-r"><div class="exp-val">${eur(lastPrice)}/${art.unit||'un'}</div></div></div>`; }).join('');
-};
-
-window.showArticleDetail = function(id) {
-  const art=articles.find(a=>a.id===id); if(!art)return;
-  const fam=famById(art.family_id);
-  document.getElementById('d-art-name').textContent=art.name;
-  document.getElementById('d-art-body').innerHTML=`
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-      <div style="width:44px;height:44px;border-radius:12px;background:${fam.color}22;display:flex;align-items:center;justify-content:center;font-size:22px">${fam.icon}</div>
-      <div><p style="font-size:13px;font-weight:700">${fam.name}</p><p style="font-size:11px;color:var(--t3)">${art.unit||'un'} · ${art.prices.length} compras</p></div>
-      <button class="btn btn-ghost" style="flex:0;margin-left:auto;padding:8px 12px;font-size:12px" onclick="window.editArticle('${id}')">✏️ Editar</button>
-    </div>
-    <div class="card-title" style="margin-bottom:8px">Histórico de preços</div>
-    ${[...art.prices].reverse().slice(0,10).map(p=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--b)"><span style="font-size:11px;color:var(--t3)">${fdate(p.date)}</span><div style="display:flex;align-items:center;gap:8px"><span style="font-size:10px;color:var(--t3)">${p.quantity||1} ${art.unit||'un'}</span><span style="font-size:13px;font-weight:700">${eur(p.price)}</span></div></div>`).join('')}`;
-  openSheet('m-artdetail');
-};
-
-window.editArticle = function(id) {
-  const art=articles.find(a=>a.id===id); if(!art)return;
-  document.getElementById('ea-name').value=art.name||'';
-  document.getElementById('ea-unit').value=art.unit||'un';
-  document.getElementById('ea-ean').value=art.ean||'';
-  document.getElementById('ea-fam-grid').innerHTML=families.map(f=>`<div class="fam-pick-opt ${art.family_id===f.id?'sel':''}" onclick="window.setEditArtFam('${id}','${f.id}',this)" style="border-color:${art.family_id===f.id?f.color:'var(--b)'}"><span style="font-size:18px">${f.icon}</span><span style="font-size:10px;font-weight:700">${f.name}</span></div>`).join('');
-  editArtId=id;
-  closeSheet('m-artdetail');
-  openSheet('m-editart');
-};
-
-window.setEditArtFam = function(artId,famId,el) {
-  document.querySelectorAll('#ea-fam-grid .fam-pick-opt').forEach(e=>{e.classList.remove('sel');e.style.borderColor='var(--b)';});
-  const fam=famById(famId);el.classList.add('sel');el.style.borderColor=fam.color;
-  const art=articles.find(a=>a.id===artId);if(art)art.family_id=famId;
-};
-
-window.saveArticleEdit = async function() {
-  const art=articles.find(a=>a.id===editArtId); if(!art)return;
-  art.name=document.getElementById('ea-name').value.trim()||art.name;
-  art.unit=document.getElementById('ea-unit').value.trim()||'un';
-  art.ean=document.getElementById('ea-ean').value.trim();
-  await supabaseClient.from('articles').update({name:art.name, unit:art.unit, ean:art.ean, family_id:art.family_id}).eq('id',art.id);
-  closeSheet('m-editart');
-  window.renderArticleList();
-  toast('✅ Artigo actualizado!');
-  editArtId=null;
-};
-
-window.renderAlerts = function() {
-  const list=alerts.filter(a=>!a.resolved).slice(0,50);
-  const wrap=document.getElementById('alerts-list');
-  if(!list.length){wrap.innerHTML=`<div class="empty"><div class="ei">✅</div><p>Sem alertas de variação de preço.</p></div>`;return;}
-  wrap.innerHTML=list.map(a=>`<div class="alert-row"><div class="alert-ico" style="background:${a.direction==='up'?'#F8717118':'#4ADE8018'}">${a.direction==='up'?'📈':'📉'}</div><div style="flex:1"><p style="font-size:13px;font-weight:700">${a.article_name}</p><p style="font-size:10px;color:var(--t3)">${eur(a.old_price)} → ${eur(a.new_price)} · ${fdate(a.date)}</p></div><div><span style="font-size:12px;font-weight:800;color:${a.direction==='up'?'var(--red)':'var(--acc)'}">${(a.pct_change>0?'+':'')+a.pct_change.toFixed(1)}%</span><button class="btn-resolve" onclick="window.resolveAlert('${a.id}')">✓</button></div></div>`).join('');
-};
-
-window.resolveAlert = async function(id) {
-  await supabaseClient.from('price_alerts').update({resolved:true}).eq('id',id);
-  const a=alerts.find(x=>x.id===id); if(a)a.resolved=true;
-  window.renderAlerts(); renderDash();
-  toast('✓ Alerta resolvido');
-};
-
-window.resolveAllAlerts = async function() {
-  await supabaseClient.from('price_alerts').update({resolved:true}).eq('user_id',currentUser.id);
-  alerts.forEach(a=>a.resolved=true);
-  window.renderAlerts(); renderDash();
-  toast('✓ Todos os alertas resolvidos');
-};
-
-window.renderConfig = function() {
-  document.getElementById('cfg-biz').value=userConfig?.biz||'';
-  document.getElementById('cfg-nif').value=userConfig?.nif||'';
-  document.getElementById('cfg-alert-pct').value=userConfig?.alertPct||10;
-  document.getElementById('cfg-counts').textContent=`${invoices.length} faturas · ${articles.length} artigos · ${alerts.filter(a=>!a.resolved).length} alertas activos`;
-  renderFamilyList();
-};
-
-function renderFamilyList() {
-  document.getElementById('fam-list').innerHTML=families.map(f=>`<div class="cat-row"><div class="cat-row-ico">${f.icon}</div><div class="cat-row-info"><p>${f.name}</p><span style="color:${f.color}">⬤</span></div><button class="cat-del-btn" onclick="window.editFamily('${f.id}')">✏️</button><button class="cat-del-btn" onclick="window.deleteFamily('${f.id}')">🗑</button></div>`).join('');
-}
-
-window.saveCfg = async function() {
-  userConfig = { biz: document.getElementById('cfg-biz').value.trim(), nif: document.getElementById('cfg-nif').value.trim(), alertPct: parseFloat(document.getElementById('cfg-alert-pct').value)||10 };
-  await supabaseClient.from('user_settings').upsert({ user_id: currentUser.id, biz_name: userConfig.biz, nif: userConfig.nif, alert_pct: userConfig.alertPct, updated_at: new Date() });
-  toast('✅ Configurações guardadas!');
-};
-
-window.openAddFamily = function() { editFamId=null; document.getElementById('m-fam-title').textContent='Nova Família'; document.getElementById('fam-name').value=''; document.getElementById('fam-icon').value=''; document.getElementById('fam-color').value='#4ADE80'; openSheet('m-family'); };
-window.editFamily = function(id) { const f=families.find(x=>x.id===id); if(!f)return; editFamId=id; document.getElementById('m-fam-title').textContent='Editar Família'; document.getElementById('fam-name').value=f.name; document.getElementById('fam-icon').value=f.icon; document.getElementById('fam-color').value=f.color; openSheet('m-family'); };
-window.saveFamily = async function() {
-  const name=document.getElementById('fam-name').value.trim();
-  const icon=document.getElementById('fam-icon').value.trim()||'📦';
-  const color=document.getElementById('fam-color').value;
-  if(!name){toast('⚠ Insira um nome','err');return;}
-  if(editFamId){
-    const idx=families.findIndex(f=>f.id===editFamId);
-    if(idx>=0) families[idx]={...families[idx],name,icon,color};
-    await supabaseClient.from('families').update({name,icon,color}).eq('id',editFamId);
-  } else {
-    const newId='f'+uid();
-    families.push({id:newId,name,icon,color,user_id:currentUser.id});
-    await supabaseClient.from('families').insert({id:newId,name,icon,color,user_id:currentUser.id});
-  }
-  closeSheet('m-family');
-  renderFamilyList();
-  window.renderArticleList();
-  toast(editFamId?'✏️ Família actualizada!':'✅ Família adicionada!');
-  editFamId=null;
-};
-window.deleteFamily = async function(id) {
-  if(articles.some(a=>a.family_id===id)&&!confirm('Esta família tem artigos. Eliminar mesmo assim?'))return;
-  families=families.filter(f=>f.id!==id);
-  await supabaseClient.from('families').delete().eq('id',id);
-  renderFamilyList();
-  toast('🗑 Família eliminada');
-};
-window.exportData = function() {
-  const data={ invoices, articles, families, alerts, config:userConfig, exportedAt:new Date().toISOString() };
-  const blob=new Blob([JSON.stringify(data)],{type:'application/json'});
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);
-  a.download='stockscan_backup_'+new Date().toISOString().slice(0,10)+'.json';
-  a.click();
-  URL.revokeObjectURL(a.href);
-  toast('📤 Backup exportado!');
-};
-
-// ============================================================
-// FORMULÁRIO DE FATURA
-// ============================================================
-window.openInvoiceForm = function(data) {
-  editInvId=data?.id||null;
-  formItems=data?.items?.map(i=>({...i,id:i.id||uid(),quantity:i.qty||i.quantity,unit_price:i.unitPrice||i.unit_price,total_price:i.totalPrice||i.total_price}))||[];
-  document.getElementById('m-inv-title').textContent=editInvId?'Editar Fatura':'Nova Fatura';
-  const fields=[['Fornecedor','fi-sup','text',data?.supplier||'','full'],['NIF Fornecedor','fi-nif','text',data?.nif||'',''],['Nº Fatura','fi-num','text',data?.num||'',''],['Data','fi-date','date',data?.date||new Date().toISOString().slice(0,10),''],['Total (€)','fi-total','number',data?.total||'',''],['IVA (€)','fi-vat','number',data?.vat||'',''],['ATCUD','fi-atcud','text',data?.atcud||'','full']];
-  const photoSection=data?.photo?`<div class="fi full"><label>FOTO DA FATURA</label><img src="${data.photo}" style="width:100%;border-radius:11px;max-height:180px;object-fit:cover"></div>`:'';
-  document.getElementById('inv-form-fields').innerHTML=photoSection+fields.map(([lbl,id,type,val,span])=>`<div class="fi ${span}"><label>${lbl}</label><input type="${type}" id="${id}" value="${val}" ${type==='number'?'step="0.01" inputmode="decimal"':''}></div>`).join('');
-  if(data?.photo) document.getElementById('inv-form-fields').dataset.photo=data.photo;
-  renderFormItems();
-  document.getElementById('save-inv-btn').onclick=()=>window.saveInvoice();
-  openSheet('m-invoice');
-};
-
-function renderFormItems() {
-  const wrap=document.getElementById('form-items-list');
-  if(!formItems.length){wrap.innerHTML=`<div style="text-align:center;padding:16px;color:var(--t3);font-size:12px">Sem artigos. Adicione manualmente.</div>`;return;}
-  wrap.innerHTML=formItems.map((item,i)=>{ const fam=famById(item.famId); return`<div class="form-item-row"><div class="fir-left"><div class="fir-fam" style="background:${fam.color}22;color:${fam.color}" onclick="window.editItemFamily('${item.id}')">${fam.icon}</div><div class="fir-info"><div style="font-size:12px;font-weight:700">${item.name||'Artigo'}</div><div style="font-size:10px;color:var(--t3)">${item.quantity||1} ${item.unit||'un'} × ${eur(item.unit_price||0)}</div></div></div><div style="display:flex;align-items:center;gap:7px"><span style="font-size:12px;font-weight:700">${eur(item.total_price||0)}</span><button class="btn-icon-sm" onclick="window.removeFormItem('${item.id}')">🗑</button></div></div>`; }).join('');
-}
-
-window.removeFormItem = function(id){ formItems=formItems.filter(i=>i.id!==id); renderFormItems(); };
-window.openAddItemManual = function(){ openSheet('m-additem'); };
-window.calcItemTotal = function(){ const qty=parseFloat(document.getElementById('ai-qty')?.value)||1; const up=parseFloat(document.getElementById('ai-price')?.value)||0; const tot=document.getElementById('ai-total'); if(tot&&up>0)tot.value=(qty*up).toFixed(2); };
-window.saveFormItem = function(){ const g=id=>document.getElementById(id)?.value?.trim()||''; const qty=parseFloat(g('ai-qty'))||1; const unitPrice=parseFloat(g('ai-price'))||0; const totalPrice=parseFloat(g('ai-total'))||qty*unitPrice; const item={ id:uid(), name:g('ai-name'), quantity:qty, unit:g('ai-unit'), unit_price:unitPrice, total_price:totalPrice, vatRate:parseFloat(g('ai-vatrate'))||23, famId:'' }; if(!item.name){toast('⚠ Insira o nome do artigo','err');return;} formItems.push(item); renderFormItems(); closeSheet('m-additem'); toast('✅ Artigo adicionado'); };
-window.editItemFamily = function(itemId){ const item=formItems.find(i=>i.id===itemId); if(!item)return; document.getElementById('fam-picker-target').value=itemId; document.getElementById('fam-picker-grid').innerHTML=families.map(f=>`<div class="fam-pick-opt ${item.famId===f.id?'sel':''}" onclick="window.setItemFam('${itemId}','${f.id}',this)" style="border-color:${item.famId===f.id?f.color:'var(--b)'}"><span style="font-size:20px">${f.icon}</span><span style="font-size:11px;font-weight:700">${f.name}</span></div>`).join(''); openSheet('m-fampicker'); };
-window.setItemFam = function(itemId,famId,el){ const item=formItems.find(i=>i.id===itemId); if(item)item.famId=famId; document.querySelectorAll('.fam-pick-opt').forEach(e=>{e.classList.remove('sel');e.style.borderColor='var(--b)';}); const fam=famById(famId); el.classList.add('sel');el.style.borderColor=fam.color; renderFormItems(); setTimeout(()=>closeSheet('m-fampicker'),300); };
-window.saveInvoice = async function() {
-  const g=id=>document.getElementById(id)?.value?.trim()||'';
-  const photo=document.getElementById('inv-form-fields')?.dataset?.photo||null;
-  const inv={ id:editInvId||uid(), supplier:g('fi-sup'), nif:g('fi-nif'), num:g('fi-num'), date:g('fi-date'), total:parseFloat(g('fi-total'))||0, vat:parseFloat(g('fi-vat'))||0, atcud:g('fi-atcud'), photo, status:'pendente', user_id:currentUser.id };
-  await supabaseClient.from('invoices').upsert(inv);
-  await supabaseClient.from('invoice_items').delete().eq('invoice_id',inv.id);
-  for(const item of formItems){
-    await supabaseClient.from('invoice_items').insert({ id:item.id||uid(), invoice_id:inv.id, name:item.name, quantity:item.quantity, unit:item.unit, unit_price:item.unit_price, total_price:item.total_price, vat_rate:item.vatRate, family_id:item.famId, user_id:currentUser.id });
-  }
-  if(editInvId){ const idx=invoices.findIndex(i=>i.id===editInvId); if(idx>=0) invoices[idx]={...inv,items:formItems}; }
-  else invoices.unshift({...inv,items:formItems});
-  closeSheet('m-invoice');
-  formItems=[]; editInvId=null;
-  renderDash(); window.renderInvoiceList();
+  const { error } = await supabase.from('invoices').insert(inv);
+  if (error) { toast('Erro ao guardar: ' + error.message); return; }
+  
   toast('✅ Fatura guardada!');
-};
-
-function openImportReview(results) {
-  importBatch = results;
-  const summary = document.getElementById('ir-summary');
-  summary.innerHTML = `<div style="background:var(--acc-dim);padding:12px;border-radius:12px"><strong>${results.length}</strong> faturas para importar</div>`;
-  const invoicesDiv = document.getElementById('ir-invoices');
-  invoicesDiv.innerHTML = results.map((inv, i) => `
-    <div style="border:1px solid var(--b);border-radius:12px;margin-bottom:12px;padding:10px">
-      <div><strong>${inv._filename || 'Fatura ' + (i+1)}</strong></div>
-      <div>Nº: ${inv.num || '—'} | Total: ${eur(inv.total)} | Data: ${inv.date || '—'}</div>
-      ${inv._failed ? '<div style="color:var(--red)">⚠️ Não foi possível ler QR Code</div>' : '<div style="color:var(--acc)">✅ QR lido com sucesso</div>'}
-    </div>
-  `).join('');
-  openSheet('m-import-review');
+  formContainer.style.display = 'none';
+  document.getElementById('supplier').value = '';
+  
+  // Opcional: limpar campos
 }
 
-window.confirmImport = async function() {
-  closeSheet('m-import-review');
-  toast('💾 A guardar...', 5000);
-  for (const inv of importBatch) {
-    if (inv._failed) continue;
-    const newInv = {
-      id: uid(),
-      supplier: inv.supplier || '',
-      nif: inv.nif || '',
-      num: inv.num || '',
-      date: inv.date || new Date().toISOString().slice(0,10),
-      total: inv.total || 0,
-      vat: inv.vat || 0,
-      atcud: inv.atcud || '',
-      photo: inv.photo,
-      items: [],
-      status: 'pendente',
-      user_id: currentUser.id
-    };
-    await supabaseClient.from('invoices').insert(newInv);
-    invoices.unshift({ ...newInv, items: [] });
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', 3000);
+}
+
+// Verificar sessão existente
+supabase.auth.getSession().then(({ data: { session } }) => {
+  if (session?.user) loadUser();
+  else {
+    loginScreen.style.display = 'flex';
+    appContent.style.display = 'none';
   }
-  renderDash();
-  window.renderInvoiceList();
-  toast('✅ Importação concluída!');
-};
-
-// ============================================================
-// CÂMARA E UTILIDADES
-// ============================================================
-async function startCam() {
-  stopCam();
-  const v = document.getElementById('cam-video'), st = document.getElementById('cam-st');
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: camFacing } });
-    camStream = stream;
-    v.srcObject = stream;
-    await v.play();
-    st.textContent = '📷 Pronto - clique em "Ler QR"';
-  } catch(e) { st.textContent = '❌ Câmara inacessível'; }
-}
-function stopCam(){ if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null;} if(qrScanInterval){clearInterval(qrScanInterval);qrScanInterval=null;} }
-window.closeCam = function(){ stopCam(); document.getElementById('cam-wrap').classList.remove('on'); };
-window.switchCam = function(){ camFacing = camFacing === 'environment' ? 'user' : 'environment'; startCam(); };
-window.openOCRScan = function() {
-  document.getElementById('cam-wrap').classList.add('on');
-  document.getElementById('cam-st').textContent = '📷 Pronto - clique em "Ler QR"';
-  startCam();
-};
-window.goPage = function(id,btn){
-  document.querySelectorAll('.page').forEach(p=>p.classList.remove('on'));
-  document.getElementById('p-'+id).classList.add('on');
-  document.querySelectorAll('.bn').forEach(b=>b.classList.remove('on'));
-  if(btn)btn.classList.add('on');
-  document.getElementById('main-scroll').scrollTop=0;
-  if(id==='dash') renderDash();
-  if(id==='inv') window.renderInvoiceList();
-  if(id==='art') window.renderArticleList();
-  if(id==='alerts') window.renderAlerts();
-  if(id==='cfg') window.renderConfig();
-};
-window.closeSheet = closeSheet;
-
-// ============================================================
-// INICIALIZAÇÃO
-// ============================================================
-supabaseClient.auth.getSession().then(({ data: { session } }) => {
-  if(session?.user) onAuthSuccess(session.user);
-  else { document.getElementById('login-container').style.display = 'flex'; document.querySelector('header').style.opacity = '0.5'; }
 });
-supabaseClient.auth.onAuthStateChange((event, session) => {
-  if(session?.user) onAuthSuccess(session.user);
-  else if(event === 'SIGNED_OUT') { currentUser=null; document.getElementById('login-container').style.display='flex'; document.getElementById('user-info').style.display='none'; document.querySelector('header').style.opacity='0.5'; }
-});
-renderInvFilterChips();
-renderArtFilterChips();
-
-function renderInvFilterChips(){ document.getElementById('inv-filter-chips').innerHTML=['todas','pendente','enviada'].map(f=>`<div class="chip ${invFilter===f?'on':''}" onclick="window.setInvFilter('${f}')">${f}</div>`).join(''); }
-window.setInvFilter = function(f){ invFilter=f; renderInvFilterChips(); window.renderInvoiceList(); };
-function renderArtFilterChips(){ const opts=[{id:'todas',name:'Todas',icon:''},...families]; document.getElementById('art-filter-chips').innerHTML=opts.map(f=>`<div class="chip ${artFilter===f.id?'on':''}" onclick="window.setArtFilter('${f.id}')">${f.icon} ${f.name}</div>`).join(''); }
-window.setArtFilter = function(f){ artFilter=f; renderArtFilterChips(); window.renderArticleList(); };
 </script>
 </body>
 </html>
