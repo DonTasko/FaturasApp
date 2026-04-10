@@ -19,7 +19,7 @@ body{background:#0C0D10;color:#ECEDF5;font-family:-apple-system,BlinkMacSystemFo
 .btn-primary:active{transform:scale(0.97)}
 .btn:active{transform:scale(0.97)}
 .cam-container{position:relative;width:100%;background:#000;min-height:300px;overflow:hidden}
-video{width:100%;display:block;transform:scaleX(-1);}
+video{width:100%;display:block}
 .qr-guide{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:220px;height:220px;border:2px solid #4ADE80;border-radius:16px;box-shadow:0 0 0 999px rgba(0,0,0,0.6);pointer-events:none}
 .qr-corner{position:absolute;width:30px;height:30px;border-color:#4ADE80;border-style:solid}
 .qr-corner.tl{top:-2px;left:-2px;border-width:3px 0 0 3px;border-radius:4px 0 0 0}
@@ -46,7 +46,7 @@ input:focus{outline:none;border-color:#4ADE80}
   <div class="logo"><div class="logo-box">📦</div><h1>Stock<span>Scan</span></h1></div>
   <div id="user-info" style="display:none;align-items:center;gap:8px">
     <span id="user-email" style="font-size:11px;color:#9496B0"></span>
-    <button class="btn" style="padding:6px 10px" onclick="window.logout()">🚪</button>
+    <button class="btn" style="padding:6px 10px" id="logout-btn">🚪</button>
   </div>
 </div>
 
@@ -56,8 +56,8 @@ input:focus{outline:none;border-color:#4ADE80}
     <h2>🔐 StockScan Cloud</h2>
     <input type="email" id="login-email" placeholder="Email" autocomplete="email">
     <input type="password" id="login-password" placeholder="Password" autocomplete="current-password">
-    <button class="btn btn-primary" style="width:100%;margin-bottom:8px" onclick="window.login()">Entrar</button>
-    <button class="btn" style="width:100%" onclick="window.signup()">Criar conta gratuita</button>
+    <button class="btn btn-primary" style="width:100%;margin-bottom:8px" id="login-btn">Entrar</button>
+    <button class="btn" style="width:100%" id="signup-btn">Criar conta gratuita</button>
   </div>
 </div>
 
@@ -76,9 +76,9 @@ input:focus{outline:none;border-color:#4ADE80}
   <div class="status" id="status">📷 Aponte para o QR Code (canto superior direito da fatura)</div>
   
   <div class="button-bar">
-    <button class="btn" style="flex:1" onclick="window.switchCamera()">🔄 Trocar câmara</button>
-    <button class="btn btn-primary" style="flex:1" onclick="window.startScanning()">🔍 Ler QR</button>
-    <button class="btn" style="flex:1" onclick="window.openManualForm()">✏️ Manual</button>
+    <button class="btn" style="flex:1" id="switch-cam-btn">🔄 Trocar câmara</button>
+    <button class="btn btn-primary" style="flex:1" id="scan-qr-btn">🔍 Ler QR</button>
+    <button class="btn" style="flex:1" id="manual-btn">✏️ Manual</button>
   </div>
   
   <div class="form-container" id="form-container" style="display:none">
@@ -96,7 +96,7 @@ input:focus{outline:none;border-color:#4ADE80}
       <div class="field"><input type="number" id="vat" step="0.01" placeholder="IVA (€)"></div>
       <div class="field"><input type="text" id="atcud" placeholder="ATCUD"></div>
     </div>
-    <button class="btn btn-primary" style="width:100%" onclick="window.saveInvoice()">✓ Guardar Fatura</button>
+    <button class="btn btn-primary" style="width:100%" id="save-btn">✓ Guardar Fatura</button>
   </div>
 </div>
 
@@ -120,9 +120,9 @@ let scanInterval = null;
 let currentFacing = 'environment';
 
 // ============================================================
-// AUTENTICAÇÃO
+// FUNÇÕES DE AUTENTICAÇÃO
 // ============================================================
-window.login = async function() {
+async function login() {
   const email = document.getElementById('login-email').value;
   const password = document.getElementById('login-password').value;
   if (!email || !password) {
@@ -138,9 +138,9 @@ window.login = async function() {
   
   toast('✅ Login efetuado!');
   await onAuthSuccess(data.user);
-};
+}
 
-window.signup = async function() {
+async function signup() {
   const email = document.getElementById('login-email').value;
   const password = document.getElementById('login-password').value;
   if (!email || !password) {
@@ -159,9 +159,9 @@ window.signup = async function() {
   }
   
   toast('✅ Conta criada! Verifique o email para confirmar.');
-};
+}
 
-window.logout = async function() {
+async function logout() {
   await supabase.auth.signOut();
   currentUser = null;
   document.getElementById('login-screen').style.display = 'flex';
@@ -169,7 +169,7 @@ window.logout = async function() {
   document.getElementById('user-info').style.display = 'none';
   stopCamera();
   toast('👋 Sessão terminada');
-};
+}
 
 async function onAuthSuccess(user) {
   currentUser = user;
@@ -220,10 +220,10 @@ function stopCamera() {
   scanning = false;
 }
 
-window.switchCamera = function() {
+function switchCamera() {
   currentFacing = currentFacing === 'environment' ? 'user' : 'environment';
   startCamera();
-};
+}
 
 // ============================================================
 // LEITURA QR CODE
@@ -250,7 +250,7 @@ function parseATQR(raw) {
   return r;
 }
 
-window.startScanning = function() {
+function startScanning() {
   if (scanning) {
     toast('Já está a ler...');
     return;
@@ -321,7 +321,7 @@ window.startScanning = function() {
       lastQR = null;
     }
   }, 400);
-};
+}
 
 function processQRData(qrData) {
   toast('✅ QR lido com sucesso!');
@@ -339,7 +339,7 @@ function processQRData(qrData) {
   document.getElementById('form-container').style.display = 'block';
 }
 
-window.openManualForm = function() {
+function openManualForm() {
   document.getElementById('supplier').value = '';
   document.getElementById('nif').value = '';
   document.getElementById('num').value = '';
@@ -350,12 +350,12 @@ window.openManualForm = function() {
   document.getElementById('form-title').textContent = 'Nova Fatura (Manual)';
   document.getElementById('form-container').style.display = 'block';
   document.getElementById('status').innerHTML = '📝 Preencha os dados da fatura';
-};
+}
 
 // ============================================================
 // GUARDAR FATURA
 // ============================================================
-window.saveInvoice = async function() {
+async function saveInvoice() {
   if (!currentUser) {
     toast('Faça login primeiro');
     return;
@@ -406,7 +406,7 @@ window.saveInvoice = async function() {
   document.getElementById('atcud').value = '';
   document.getElementById('form-container').style.display = 'none';
   document.getElementById('status').innerHTML = '📷 Aponte para o QR Code (canto superior direito da fatura)';
-};
+}
 
 // ============================================================
 // TOAST
@@ -419,6 +419,22 @@ function toast(msg, duration = 3000) {
     t.style.display = 'none';
   }, duration);
 }
+
+// ============================================================
+// EVENT LISTENERS (para evitar problemas de onclick no GitHub)
+// ============================================================
+document.addEventListener('DOMContentLoaded', function() {
+  // Botões de login
+  document.getElementById('login-btn').addEventListener('click', login);
+  document.getElementById('signup-btn').addEventListener('click', signup);
+  document.getElementById('logout-btn').addEventListener('click', logout);
+  
+  // Botões da app
+  document.getElementById('switch-cam-btn').addEventListener('click', switchCamera);
+  document.getElementById('scan-qr-btn').addEventListener('click', startScanning);
+  document.getElementById('manual-btn').addEventListener('click', openManualForm);
+  document.getElementById('save-btn').addEventListener('click', saveInvoice);
+});
 
 // ============================================================
 // VERIFICAR SESSÃO EXISTENTE
