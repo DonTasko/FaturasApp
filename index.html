@@ -8,61 +8,81 @@
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:#0C0D10;color:#ECEDF5;font-family:-apple-system,sans-serif;max-width:480px;margin:0 auto}
-.header{padding:14px 16px;display:flex;justify-content:space-between;background:#13141A;border-bottom:1px solid #2A2B3A}
+body{background:#0C0D10;color:#ECEDF5;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:480px;margin:0 auto;min-height:100vh}
+.header{padding:14px 16px;display:flex;justify-content:space-between;align-items:center;background:#13141A;border-bottom:1px solid #2A2B3A}
 .logo{display:flex;align-items:center;gap:9px}
-.logo-box{width:32px;height:32px;background:#4ADE80;border-radius:9px;display:flex;align-items:center;justify-content:center}
-.btn{background:#1B1C24;border:1px solid #2A2B3A;border-radius:10px;padding:10px 16px;color:#ECEDF5;cursor:pointer}
-.btn-primary{background:#4ADE80;color:#081A0D}
-.cam-container{position:relative;width:100%;background:#000;min-height:300px}
-video{width:100%;display:block}
-.cam-overlay{position:absolute;top:0;left:0;right:0;bottom:0;border:2px solid #4ADE80;border-radius:12px;margin:20px;pointer-events:none}
-.qr-guide{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:200px;height:200px;border:2px solid #4ADE80;border-radius:12px;box-shadow:0 0 0 999px rgba(0,0,0,0.5);pointer-events:none}
-.status{padding:12px;text-align:center;font-size:13px}
-.toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#22232E;border-radius:12px;padding:10px 16px;font-size:12px;display:none;z-index:100}
-.form-container{padding:16px}
-input,select{background:#1B1C24;border:1px solid #2A2B3A;border-radius:10px;padding:12px;color:#ECEDF5;width:100%;margin-bottom:12px}
+.logo-box{width:32px;height:32px;background:#4ADE80;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px}
+.logo h1{font-size:16px;font-weight:800}
+.logo h1 span{color:#4ADE80}
+.btn{background:#1B1C24;border:1px solid #2A2B3A;border-radius:10px;padding:10px 16px;color:#ECEDF5;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+.btn-primary{background:#4ADE80;color:#081A0D;border:none}
+.btn-primary:active{transform:scale(0.97)}
+.btn:active{transform:scale(0.97)}
+.cam-container{position:relative;width:100%;background:#000;min-height:300px;overflow:hidden}
+video{width:100%;display:block;transform:scaleX(-1);}
+.qr-guide{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:220px;height:220px;border:2px solid #4ADE80;border-radius:16px;box-shadow:0 0 0 999px rgba(0,0,0,0.6);pointer-events:none}
+.qr-corner{position:absolute;width:30px;height:30px;border-color:#4ADE80;border-style:solid}
+.qr-corner.tl{top:-2px;left:-2px;border-width:3px 0 0 3px;border-radius:4px 0 0 0}
+.qr-corner.tr{top:-2px;right:-2px;border-width:3px 3px 0 0;border-radius:0 4px 0 0}
+.qr-corner.bl{bottom:-2px;left:-2px;border-width:0 0 3px 3px;border-radius:0 0 0 4px}
+.qr-corner.br{bottom:-2px;right:-2px;border-width:0 3px 3px 0;border-radius:0 0 4px 0}
+.status{padding:12px;text-align:center;font-size:13px;color:#9496B0}
+.button-bar{display:flex;gap:8px;padding:0 16px;margin-bottom:16px}
+.toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#22232E;border:1px solid #4ADE8033;border-radius:12px;padding:10px 16px;font-size:12px;display:none;z-index:100;white-space:nowrap}
+.form-container{padding:16px;background:#13141A;margin:16px;border-radius:16px}
+.form-container h3{margin-bottom:16px;font-size:16px}
+input,select{background:#1B1C24;border:1.5px solid #2A2B3A;border-radius:10px;padding:12px;color:#ECEDF5;width:100%;margin-bottom:12px;font-size:14px;font-family:inherit}
+input:focus{outline:none;border-color:#4ADE80}
 .form-row{display:flex;gap:12px;margin-bottom:12px}
 .form-row .field{flex:1}
-button:active{transform:scale(0.97)}
+.login-card{background:#13141A;border-radius:24px;padding:24px;margin:24px;border:1px solid #2A2B3A}
+.login-card h2{font-size:18px;margin-bottom:20px;text-align:center}
+.login-card input{margin-bottom:12px}
 </style>
 </head>
 <body>
 
 <div class="header">
-  <div class="logo"><div class="logo-box">📦</div><span style="font-weight:800">StockScan</span></div>
+  <div class="logo"><div class="logo-box">📦</div><h1>Stock<span>Scan</span></h1></div>
   <div id="user-info" style="display:none;align-items:center;gap:8px">
     <span id="user-email" style="font-size:11px;color:#9496B0"></span>
-    <button class="btn" style="padding:6px 10px" onclick="logout()">🚪</button>
+    <button class="btn" style="padding:6px 10px" onclick="window.logout()">🚪</button>
   </div>
 </div>
 
-<div id="login-screen" style="padding:24px">
-  <div style="background:#13141A;border-radius:24px;padding:24px">
-    <h2 style="margin-bottom:20px">🔐 StockScan Cloud</h2>
-    <input type="email" id="login-email" placeholder="Email">
-    <input type="password" id="login-password" placeholder="Password">
-    <button class="btn btn-primary" style="width:100%;margin-bottom:8px" onclick="login()">Entrar</button>
-    <button class="btn" style="width:100%" onclick="signup()">Criar conta</button>
+<!-- TELA DE LOGIN -->
+<div id="login-screen" style="display:flex;flex-direction:column;justify-content:center;min-height:80vh">
+  <div class="login-card">
+    <h2>🔐 StockScan Cloud</h2>
+    <input type="email" id="login-email" placeholder="Email" autocomplete="email">
+    <input type="password" id="login-password" placeholder="Password" autocomplete="current-password">
+    <button class="btn btn-primary" style="width:100%;margin-bottom:8px" onclick="window.login()">Entrar</button>
+    <button class="btn" style="width:100%" onclick="window.signup()">Criar conta gratuita</button>
   </div>
 </div>
 
+<!-- CONTEÚDO PRINCIPAL (aparece após login) -->
 <div id="app-content" style="display:none">
   <div class="cam-container">
     <video id="video" autoplay playsinline muted></video>
     <canvas id="canvas" style="display:none"></canvas>
-    <div class="qr-guide"></div>
+    <div class="qr-guide">
+      <div class="qr-corner tl"></div>
+      <div class="qr-corner tr"></div>
+      <div class="qr-corner bl"></div>
+      <div class="qr-corner br"></div>
+    </div>
   </div>
   <div class="status" id="status">📷 Aponte para o QR Code (canto superior direito da fatura)</div>
   
-  <div style="display:flex;gap:8px;padding:0 16px;margin-bottom:16px">
-    <button class="btn" style="flex:1" onclick="switchCamera()">🔄 Trocar câmara</button>
-    <button class="btn btn-primary" style="flex:1" onclick="startScanning()">🔍 Ler QR</button>
-    <button class="btn" style="flex:1" onclick="openManualForm()">✏️ Manual</button>
+  <div class="button-bar">
+    <button class="btn" style="flex:1" onclick="window.switchCamera()">🔄 Trocar câmara</button>
+    <button class="btn btn-primary" style="flex:1" onclick="window.startScanning()">🔍 Ler QR</button>
+    <button class="btn" style="flex:1" onclick="window.openManualForm()">✏️ Manual</button>
   </div>
   
   <div class="form-container" id="form-container" style="display:none">
-    <h3 id="form-title" style="margin-bottom:16px">Nova Fatura</h3>
+    <h3 id="form-title">Nova Fatura</h3>
     <input type="text" id="supplier" placeholder="Fornecedor">
     <div class="form-row">
       <div class="field"><input type="text" id="nif" placeholder="NIF"></div>
@@ -76,73 +96,94 @@ button:active{transform:scale(0.97)}
       <div class="field"><input type="number" id="vat" step="0.01" placeholder="IVA (€)"></div>
       <div class="field"><input type="text" id="atcud" placeholder="ATCUD"></div>
     </div>
-    <button class="btn btn-primary" style="width:100%" onclick="saveInvoice()">✓ Guardar Fatura</button>
+    <button class="btn btn-primary" style="width:100%" onclick="window.saveInvoice()">✓ Guardar Fatura</button>
   </div>
 </div>
 
 <div id="toast" class="toast"></div>
 
 <script>
-// SUPABASE
+// ============================================================
+// SUPABASE CONFIG
+// ============================================================
 const SUPABASE_URL = 'https://clhhnzgjcrxezxhvguiy.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_L8_BSQnaKtl0wdlcA645vA__HHhozVn';
-const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabase = supabaseJs.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// ============================================================
+// ESTADO GLOBAL
+// ============================================================
 let currentUser = null;
 let stream = null;
 let scanning = false;
 let scanInterval = null;
 let currentFacing = 'environment';
 
-// Elementos
-const loginScreen = document.getElementById('login-screen');
-const appContent = document.getElementById('app-content');
-const video = document.getElementById('video');
-const canvas = document.getElementById('canvas');
-const statusDiv = document.getElementById('status');
-const formContainer = document.getElementById('form-container');
-const formTitle = document.getElementById('form-title');
-
 // ============================================================
 // AUTENTICAÇÃO
 // ============================================================
-async function login() {
+window.login = async function() {
   const email = document.getElementById('login-email').value;
   const password = document.getElementById('login-password').value;
-  if (!email || !password) { toast('Preencha email e password'); return; }
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) { toast('Erro: ' + error.message); return; }
-  await loadUser();
-}
-async function signup() {
+  if (!email || !password) {
+    toast('Preencha email e password');
+    return;
+  }
+  
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) {
+    toast('Erro: ' + error.message);
+    return;
+  }
+  
+  toast('✅ Login efetuado!');
+  await onAuthSuccess(data.user);
+};
+
+window.signup = async function() {
   const email = document.getElementById('login-email').value;
   const password = document.getElementById('login-password').value;
-  if (!email || !password) { toast('Preencha email e password'); return; }
-  const { error } = await supabase.auth.signUp({ email, password });
-  if (error) { toast('Erro: ' + error.message); return; }
-  toast('✅ Conta criada! Verifique o email.');
-}
-async function logout() {
+  if (!email || !password) {
+    toast('Preencha email e password');
+    return;
+  }
+  if (password.length < 6) {
+    toast('Password com pelo menos 6 caracteres');
+    return;
+  }
+  
+  const { data, error } = await supabase.auth.signUp({ email, password });
+  if (error) {
+    toast('Erro: ' + error.message);
+    return;
+  }
+  
+  toast('✅ Conta criada! Verifique o email para confirmar.');
+};
+
+window.logout = async function() {
   await supabase.auth.signOut();
   currentUser = null;
-  loginScreen.style.display = 'flex';
-  appContent.style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('app-content').style.display = 'none';
+  document.getElementById('user-info').style.display = 'none';
   stopCamera();
-}
-async function loadUser() {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (user) {
-    currentUser = user;
-    loginScreen.style.display = 'none';
-    appContent.style.display = 'block';
-    document.getElementById('user-info').style.display = 'flex';
-    document.getElementById('user-email').textContent = user.email.split('@')[0];
-    startCamera();
-  }
+  toast('👋 Sessão terminada');
+};
+
+async function onAuthSuccess(user) {
+  currentUser = user;
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app-content').style.display = 'block';
+  document.getElementById('user-info').style.display = 'flex';
+  document.getElementById('user-email').textContent = user.email.split('@')[0];
+  
+  // Inicia câmara
+  startCamera();
 }
 
 // ============================================================
-// CÂMARA E QR CODE
+// CÂMARA
 // ============================================================
 async function startCamera() {
   stopCamera();
@@ -150,30 +191,88 @@ async function startCamera() {
     stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: { exact: currentFacing }, width: { ideal: 1280 }, height: { ideal: 720 } }
     });
+    const video = document.getElementById('video');
     video.srcObject = stream;
     await video.play();
-    statusDiv.innerHTML = '📷 Câmara ativa. Clique em "Ler QR" e aponte para o código.';
+    document.getElementById('status').innerHTML = '📷 Câmara ativa. Clique em "Ler QR" e aponte para o código.';
   } catch(e) {
-    // Fallback
-    stream = await navigator.mediaDevices.getUserMedia({ video: true });
-    video.srcObject = stream;
-    await video.play();
+    // Fallback sem facingMode
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      const video = document.getElementById('video');
+      video.srcObject = stream;
+      await video.play();
+    } catch(err) {
+      document.getElementById('status').innerHTML = '❌ Não foi possível aceder à câmara';
+    }
   }
 }
+
 function stopCamera() {
-  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
-  if (scanInterval) { clearInterval(scanInterval); scanInterval = null; }
+  if (stream) {
+    stream.getTracks().forEach(t => t.stop());
+    stream = null;
+  }
+  if (scanInterval) {
+    clearInterval(scanInterval);
+    scanInterval = null;
+  }
+  scanning = false;
 }
-function switchCamera() {
+
+window.switchCamera = function() {
   currentFacing = currentFacing === 'environment' ? 'user' : 'environment';
   startCamera();
+};
+
+// ============================================================
+// LEITURA QR CODE
+// ============================================================
+function parseATQR(raw) {
+  const r = {};
+  if (!raw) return r;
+  const pairs = raw.split('*');
+  for (const pair of pairs) {
+    const i = pair.indexOf(':');
+    if (i < 0) continue;
+    const k = pair.slice(0, i).trim();
+    const v = pair.slice(i + 1).trim();
+    if (k === 'A') r.nif = v;
+    else if (k === 'B') r.nifClient = v;
+    else if (k === 'F' && v.length === 8) {
+      r.date = v.slice(0, 4) + '-' + v.slice(4, 6) + '-' + v.slice(6, 8);
+    }
+    else if (k === 'G') r.num = v;
+    else if (k === 'H') r.atcud = v;
+    else if (k === 'N') r.vat = parseFloat(v) || 0;
+    else if (k === 'O') r.total = parseFloat(v) || 0;
+  }
+  return r;
 }
-function startScanning() {
-  if (scanning) return;
+
+window.startScanning = function() {
+  if (scanning) {
+    toast('Já está a ler...');
+    return;
+  }
+  
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  
+  if (!video.videoWidth || !video.videoHeight) {
+    toast('Aguarde a câmara iniciar...');
+    return;
+  }
+  
   scanning = true;
-  statusDiv.innerHTML = '🔍 A ler QR Code... mantenha estável';
+  document.getElementById('status').innerHTML = '🔍 A ler QR Code... mantenha a câmara estável';
+  toast('🔍 A ler QR... aproxime do código', 3000);
+  
+  let stableCount = 0;
+  let lastQR = null;
   
   if (scanInterval) clearInterval(scanInterval);
+  
   scanInterval = setInterval(() => {
     if (!video.videoWidth || !video.videoHeight) return;
     
@@ -183,10 +282,11 @@ function startScanning() {
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     
-    // Tenta com várias inversões
+    // Tenta ler QR
     let code = jsQR(imageData.data, canvas.width, canvas.height, { inversionAttempts: 'attemptBoth' });
+    
+    // Se não achou, tenta com imagem invertida
     if (!code) {
-      // Tenta com imagem invertida
       const inverted = new Uint8ClampedArray(imageData.data.length);
       for (let i = 0; i < imageData.data.length; i += 4) {
         inverted[i] = 255 - imageData.data[i];
@@ -198,111 +298,150 @@ function startScanning() {
     }
     
     if (code) {
-      clearInterval(scanInterval);
-      scanInterval = null;
-      scanning = false;
-      processQRData(code.data);
+      const qrData = parseATQR(code.data);
+      if (qrData.nif || qrData.num || qrData.total) {
+        const qrKey = `${qrData.nif}|${qrData.num}|${qrData.total}`;
+        if (lastQR === qrKey) {
+          stableCount++;
+          if (stableCount >= 2) {
+            // QR estável, processa
+            clearInterval(scanInterval);
+            scanInterval = null;
+            scanning = false;
+            processQRData(qrData);
+          }
+        } else {
+          lastQR = qrKey;
+          stableCount = 1;
+          document.getElementById('status').innerHTML = '📷 QR detetado... mantenha estável';
+        }
+      }
+    } else {
+      stableCount = 0;
+      lastQR = null;
     }
-  }, 500);
-}
+  }, 400);
+};
 
-function processQRData(qrString) {
-  console.log('QR lido:', qrString);
-  const data = parseATQR(qrString);
-  if (!data.nif && !data.num && !data.total) {
-    toast('❌ QR inválido. Tente novamente.');
-    statusDiv.innerHTML = '❌ QR não reconhecido. Tente outra foto.';
-    return;
-  }
-  
+function processQRData(qrData) {
   toast('✅ QR lido com sucesso!');
-  statusDiv.innerHTML = '✅ QR detetado! Preencha os restantes campos.';
+  document.getElementById('status').innerHTML = '✅ QR detetado! Preencha os restantes campos.';
   
-  // Preenche formulário com dados do QR
-  document.getElementById('nif').value = data.nif || '';
-  document.getElementById('num').value = data.num || '';
-  document.getElementById('date').value = data.date || new Date().toISOString().slice(0,10);
-  document.getElementById('total').value = data.total || '';
-  document.getElementById('vat').value = data.vat || '';
-  document.getElementById('atcud').value = data.atcud || '';
+  // Preenche formulário
+  document.getElementById('nif').value = qrData.nif || '';
+  document.getElementById('num').value = qrData.num || '';
+  document.getElementById('date').value = qrData.date || new Date().toISOString().slice(0, 10);
+  document.getElementById('total').value = qrData.total || '';
+  document.getElementById('vat').value = qrData.vat || '';
+  document.getElementById('atcud').value = qrData.atcud || '';
   
-  formTitle.textContent = 'Nova Fatura (QR lido)';
-  formContainer.style.display = 'block';
+  document.getElementById('form-title').textContent = 'Nova Fatura (QR lido)';
+  document.getElementById('form-container').style.display = 'block';
 }
 
-function parseATQR(raw) {
-  const r = {};
-  const pairs = raw.split('*');
-  for (const pair of pairs) {
-    const i = pair.indexOf(':');
-    if (i < 0) continue;
-    const k = pair.slice(0, i).trim();
-    const v = pair.slice(i + 1).trim();
-    if (k === 'A') r.nif = v;
-    else if (k === 'B') r.nifClient = v;
-    else if (k === 'F' && v.length === 8) r.date = v.slice(0,4)+'-'+v.slice(4,6)+'-'+v.slice(6,8);
-    else if (k === 'G') r.num = v;
-    else if (k === 'H') r.atcud = v;
-    else if (k === 'N') r.vat = parseFloat(v) || 0;
-    else if (k === 'O') r.total = parseFloat(v) || 0;
-  }
-  return r;
-}
-
-function openManualForm() {
-  formTitle.textContent = 'Nova Fatura (Manual)';
+window.openManualForm = function() {
   document.getElementById('supplier').value = '';
   document.getElementById('nif').value = '';
   document.getElementById('num').value = '';
-  document.getElementById('date').value = new Date().toISOString().slice(0,10);
+  document.getElementById('date').value = new Date().toISOString().slice(0, 10);
   document.getElementById('total').value = '';
   document.getElementById('vat').value = '';
   document.getElementById('atcud').value = '';
-  formContainer.style.display = 'block';
-  statusDiv.innerHTML = '📝 Preencha os dados da fatura';
-}
+  document.getElementById('form-title').textContent = 'Nova Fatura (Manual)';
+  document.getElementById('form-container').style.display = 'block';
+  document.getElementById('status').innerHTML = '📝 Preencha os dados da fatura';
+};
 
-async function saveInvoice() {
-  if (!currentUser) return;
+// ============================================================
+// GUARDAR FATURA
+// ============================================================
+window.saveInvoice = async function() {
+  if (!currentUser) {
+    toast('Faça login primeiro');
+    return;
+  }
   
-  const inv = {
-    id: Date.now().toString(36) + Math.random().toString(36).substr(2, 4),
-    supplier: document.getElementById('supplier').value,
-    nif: document.getElementById('nif').value,
-    num: document.getElementById('num').value,
-    date: document.getElementById('date').value,
-    total: parseFloat(document.getElementById('total').value) || 0,
-    vat: parseFloat(document.getElementById('vat').value) || 0,
-    atcud: document.getElementById('atcud').value,
+  const supplier = document.getElementById('supplier').value.trim();
+  const nif = document.getElementById('nif').value.trim();
+  const num = document.getElementById('num').value.trim();
+  const date = document.getElementById('date').value;
+  const total = parseFloat(document.getElementById('total').value) || 0;
+  const vat = parseFloat(document.getElementById('vat').value) || 0;
+  const atcud = document.getElementById('atcud').value.trim();
+  
+  if (!date) {
+    toast('⚠️ Data é obrigatória');
+    return;
+  }
+  
+  const invoice = {
+    id: Date.now().toString(36) + Math.random().toString(36).substr(2, 6),
+    supplier: supplier,
+    nif: nif,
+    num: num,
+    date: date,
+    total: total,
+    vat: vat,
+    atcud: atcud,
     photo: null,
     status: 'pendente',
     user_id: currentUser.id,
-    items: []
+    created_at: new Date().toISOString()
   };
   
-  const { error } = await supabase.from('invoices').insert(inv);
-  if (error) { toast('Erro ao guardar: ' + error.message); return; }
+  const { error } = await supabase.from('invoices').insert(invoice);
+  if (error) {
+    toast('❌ Erro ao guardar: ' + error.message);
+    return;
+  }
   
   toast('✅ Fatura guardada!');
-  formContainer.style.display = 'none';
-  document.getElementById('supplier').value = '';
   
-  // Opcional: limpar campos
-}
+  // Limpa formulário
+  document.getElementById('supplier').value = '';
+  document.getElementById('nif').value = '';
+  document.getElementById('num').value = '';
+  document.getElementById('total').value = '';
+  document.getElementById('vat').value = '';
+  document.getElementById('atcud').value = '';
+  document.getElementById('form-container').style.display = 'none';
+  document.getElementById('status').innerHTML = '📷 Aponte para o QR Code (canto superior direito da fatura)';
+};
 
-function toast(msg) {
+// ============================================================
+// TOAST
+// ============================================================
+function toast(msg, duration = 3000) {
   const t = document.getElementById('toast');
   t.textContent = msg;
   t.style.display = 'block';
-  setTimeout(() => t.style.display = 'none', 3000);
+  setTimeout(() => {
+    t.style.display = 'none';
+  }, duration);
 }
 
-// Verificar sessão existente
+// ============================================================
+// VERIFICAR SESSÃO EXISTENTE
+// ============================================================
 supabase.auth.getSession().then(({ data: { session } }) => {
-  if (session?.user) loadUser();
-  else {
-    loginScreen.style.display = 'flex';
-    appContent.style.display = 'none';
+  if (session?.user) {
+    onAuthSuccess(session.user);
+  } else {
+    document.getElementById('login-screen').style.display = 'flex';
+    document.getElementById('app-content').style.display = 'none';
+  }
+});
+
+// Monitoriza mudanças na autenticação
+supabase.auth.onAuthStateChange((event, session) => {
+  if (session?.user) {
+    onAuthSuccess(session.user);
+  } else if (event === 'SIGNED_OUT') {
+    currentUser = null;
+    document.getElementById('login-screen').style.display = 'flex';
+    document.getElementById('app-content').style.display = 'none';
+    document.getElementById('user-info').style.display = 'none';
+    stopCamera();
   }
 });
 </script>
