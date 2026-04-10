@@ -207,10 +207,10 @@ header{flex-shrink:0;padding:14px 16px 10px;display:flex;align-items:center;just
 <div id="cam-wrap">
   <div class="cam-top"><button class="cam-top-btn" onclick="window.closeCam()">✕</button><button class="cam-top-btn" onclick="window.switchCam()">🔄</button></div>
   <div class="cam-frame"><video id="cam-video" autoplay playsinline muted></video><canvas id="cam-canvas"></canvas><div class="cam-corners"><div class="cor tl"></div><div class="cor tr"></div><div class="cor bl"></div><div class="cor br"></div><div class="slr"></div></div></div>
-  <div class="cam-bottom"><p id="cam-hint">Aponte para o QR Code AT da fatura</p><p id="cam-st">A iniciar câmara...</p><button class="cam-shutter" id="cam-shutter" style="display:none" onclick="window.captureAndOCR()">📷</button><button style="margin-top:4px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:#fff;padding:9px 20px;border-radius:11px;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--sans)" onclick="window.closeCam();window.openInvoiceForm({items:[]})">✏️ Manual</button></div>
+  <div class="cam-bottom"><p id="cam-hint">Aponte para o QR Code AT da fatura</p><p id="cam-st">A iniciar câmara...</p><button class="cam-shutter" id="cam-shutter" style="display:flex" onclick="window.captureAndOCR()">📷</button><button style="margin-top:4px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:#fff;padding:9px 20px;border-radius:11px;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--sans)" onclick="window.closeCam();window.openInvoiceForm({items:[]})">✏️ Manual</button></div>
 </div>
 
-<div id="ocr-loading"><div class="ocr-spin"></div><p>🧠 A analisar fatura com IA Gemini...<br><span style="font-size:12px;color:var(--t3);font-weight:400">A extrair dados automaticamente</span></p></div>
+<div id="ocr-loading"><div class="ocr-spin"></div><p>🧠 A analisar fatura...<br><span style="font-size:12px;color:var(--t3);font-weight:400">A extrair dados do QR Code e imagem</span></p></div>
 
 <div class="overlay" id="m-invoice"><div class="sheet"><div class="sh-handle"></div><div class="sh-hdr"><h3 id="m-inv-title">Nova Fatura</h3><button class="sh-close" onclick="window.closeSheet('m-invoice')">✕</button></div><div class="sh-body"><div class="fg" id="inv-form-fields" style="margin-bottom:14px"></div><div class="card-title">Artigos</div><div id="form-items-list" style="margin-bottom:10px"></div><button class="btn btn-ghost" style="width:100%;font-size:12px;margin-bottom:4px" onclick="window.openAddItemManual()">+ Adicionar artigo manualmente</button></div><div class="sh-footer"><button class="btn btn-ghost" onclick="window.closeSheet('m-invoice')">Cancelar</button><button class="btn btn-prim" id="save-inv-btn">✓ Guardar</button></div></div></div>
 <div class="overlay" id="m-invdetail"><div class="sheet"><div class="sh-handle"></div><div class="sh-hdr"><h3 id="d-inv-num">Fatura</h3><button class="sh-close" onclick="window.closeSheet('m-invdetail')">✕</button></div><div class="sh-body" id="d-inv-body"></div><div class="sh-footer" id="d-inv-footer"></div></div></div>
@@ -234,7 +234,7 @@ const SUPABASE_ANON_KEY = 'sb_publishable_L8_BSQnaKtl0wdlcA645vA__HHhozVn';
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ============================================================
-// GEMINI API - GRATUITA (1500 requisições/dia)
+// GEMINI API
 // ============================================================
 const GEMINI_API_KEY = 'AIzaSyBzV7PgD_U3e9WVH3jjIU5x4slQ8lQuQpA';
 
@@ -386,75 +386,56 @@ function findBestMatch(name, threshold = 0.7) {
 }
 
 // ============================================================
-// GEMINI OCR - EXTRAÇÃO AUTOMÁTICA DE DADOS
+// PARSING DO QR CODE (FORMATO AT)
 // ============================================================
 function parseAT(raw) {
   const r = {};
   if (!raw) return r;
-  raw.split('*').forEach(pair => {
+  const pairs = raw.split('*');
+  for (const pair of pairs) {
     const i = pair.indexOf(':');
-    if (i < 0) return;
-    const k = pair.slice(0, i).trim(), v = pair.slice(i + 1).trim();
+    if (i < 0) continue;
+    const k = pair.slice(0, i).trim();
+    const v = pair.slice(i + 1).trim();
     if (k === 'A') r.nif = v;
     else if (k === 'B') r.nifClient = v;
-    else if (k === 'F' && v.length === 8) r.date = v.slice(0, 4) + '-' + v.slice(4, 6) + '-' + v.slice(6, 8);
+    else if (k === 'F' && v.length === 8) {
+      r.date = v.slice(0, 4) + '-' + v.slice(4, 6) + '-' + v.slice(6, 8);
+    }
     else if (k === 'G') r.num = v;
     else if (k === 'H') r.atcud = v;
     else if (k === 'N') r.vat = parseFloat(v) || 0;
     else if (k === 'O') r.total = parseFloat(v) || 0;
-  });
+  }
   return r;
 }
 
-async function callGeminiOCR(imageDataUrl, qrData = null) {
+// ============================================================
+// GEMINI API - EXTRAÇÃO DE ARTIGOS DA IMAGEM
+// ============================================================
+async function callGeminiForItems(imageDataUrl) {
   const base64Image = imageDataUrl.split(',')[1];
   
-  const qrContext = qrData ? `
-DADOS DO QR CODE (prioridade absoluta - usa estes valores quando disponíveis):
-- NIF Fornecedor: ${qrData.nif || ''}
-- NIF Cliente: ${qrData.nifClient || ''}
-- Número da Fatura: ${qrData.num || ''}
-- Data: ${qrData.date || ''}
-- Total: ${qrData.total || 0}
-- IVA: ${qrData.vat || 0}
-- ATCUD: ${qrData.atcud || ''}
-` : '';
+  const prompt = `Analisa esta fatura portuguesa e extrai APENAS os artigos/produtos listados.
+Retorna APENAS um array JSON, sem texto adicional, sem markdown.
 
-  const prompt = `Extrai TODOS os dados desta fatura portuguesa.
-${qrContext}
-Retorna APENAS JSON (sem texto adicional, sem markdown, sem \`\`\`).
+Formato EXATO do array:
+[
+  {
+    "name": "nome do produto",
+    "qty": 1.5,
+    "unit": "kg",
+    "unitPrice": 10.00,
+    "totalPrice": 15.00,
+    "vatRate": 23
+  }
+]
 
-Formato EXATO:
-{
-  "supplier": "nome completo do fornecedor",
-  "nif": "000000000",
-  "nifClient": "000000000",
-  "num": "FT 123/2024",
-  "date": "2024-01-15",
-  "total": 100.50,
-  "vat": 23.00,
-  "atcud": "ABC123",
-  "items": [
-    {
-      "name": "nome do produto",
-      "qty": 1.5,
-      "unit": "kg",
-      "unitPrice": 10.00,
-      "totalPrice": 15.00,
-      "vatRate": 23
-    }
-  ]
-}
-
-REGRAS IMPORTANTES:
-- Se um campo não for visível na imagem, usa "" para texto e 0 para números
-- Os items DEVEM ser extraídos TODOS os produtos da fatura
+REGRAS:
 - unit pode ser: kg, un, L, cx, lt, g, dz
 - vatRate é 6, 13 ou 23
-- NIFs têm 9 dígitos
-- Data no formato YYYY-MM-DD
 - Usa ponto (.) como separador decimal
-- Preços em formato numérico (ex: 10.50)`;
+- Se não conseguir ler nenhum artigo, retorna []`;
 
   try {
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
@@ -481,40 +462,30 @@ REGRAS IMPORTANTES:
 
     if (!response.ok) {
       const error = await response.text();
-      throw new Error(`Gemini API error: ${response.status} - ${error}`);
+      console.error('Gemini API error:', error);
+      return null;
     }
 
     const data = await response.json();
     const textResponse = data.candidates[0].content.parts[0].text;
     
-    // Limpa a resposta (remove markdown se houver)
+    // Limpa a resposta
     let cleanJson = textResponse.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-    const jsonMatch = cleanJson.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error('Resposta inválida da Gemini');
     
-    const result = JSON.parse(jsonMatch[0]);
-    if (!result.items) result.items = [];
+    // Tenta extrair array
+    const arrayMatch = cleanJson.match(/\[[\s\S]*\]/);
+    if (!arrayMatch) return [];
     
-    // Se temos QR, sobrepõe os dados mais fiáveis
-    if (qrData) {
-      if (qrData.nif) result.nif = qrData.nif;
-      if (qrData.nifClient) result.nifClient = qrData.nifClient;
-      if (qrData.num) result.num = qrData.num;
-      if (qrData.date) result.date = qrData.date;
-      if (qrData.total) result.total = qrData.total;
-      if (qrData.vat) result.vat = qrData.vat;
-      if (qrData.atcud) result.atcud = qrData.atcud;
-    }
-    
-    return result;
+    const items = JSON.parse(arrayMatch[0]);
+    return Array.isArray(items) ? items : [];
   } catch (error) {
-    console.error('Gemini OCR error:', error);
-    throw error;
+    console.error('Gemini items extraction error:', error);
+    return null;
   }
 }
 
 // ============================================================
-// CÂMARA E OCR
+// CÂMARA E OCR - PRIORIDADE AO QR CODE
 // ============================================================
 window.captureAndOCR = async function() {
   const v = document.getElementById('cam-video');
@@ -530,60 +501,157 @@ window.captureAndOCR = async function() {
   const ctx = c.getContext('2d');
   ctx.drawImage(v, 0, 0);
   
-  // Tentar ler QR Code da imagem
+  showOCRLoading(true);
+  toast('🔍 A ler QR Code...', 5000);
+  
+  // 1. TENTAR LER QR CODE (prioridade máxima)
   let qrData = null;
   try {
     if (typeof BarcodeDetector !== 'undefined') {
       const detector = new BarcodeDetector({ formats: ['qr_code'] });
       const codes = await detector.detect(v);
-      if (codes.length) {
+      if (codes.length && codes[0].rawValue) {
         qrData = parseAT(codes[0].rawValue);
-        toast('✅ QR Code detetado!', 2000);
-      }
-    } else {
-      const raw = ctx.getImageData(0, 0, c.width, c.height);
-      const code = jsQR(raw.data, c.width, c.height, { inversionAttempts: 'attemptBoth' });
-      if (code) {
-        qrData = parseAT(code.data);
+        console.log('QR Code lido:', qrData);
         toast('✅ QR Code detetado!', 2000);
       }
     }
-  } catch(e) { console.warn(e); }
+    
+    // Fallback para jsQR se BarcodeDetector não funcionar
+    if (!qrData) {
+      const raw = ctx.getImageData(0, 0, c.width, c.height);
+      const code = jsQR(raw.data, c.width, c.height, { inversionAttempts: 'attemptBoth' });
+      if (code && code.data) {
+        qrData = parseAT(code.data);
+        console.log('QR Code lido (jsQR):', qrData);
+        toast('✅ QR Code detetado!', 2000);
+      }
+    }
+  } catch(e) { 
+    console.warn('QR Code reading error:', e);
+  }
   
-  // Reduz tamanho para enviar à API
+  // Se temos QR com dados mínimos, usamos imediatamente
+  if (qrData && (qrData.nif || qrData.num || qrData.total)) {
+    showOCRLoading(false);
+    
+    // Tentar extrair artigos da imagem (opcional, se falhar fica vazio)
+    toast('📷 A ler artigos da imagem...', 5000);
+    showOCRLoading(true);
+    
+    let items = [];
+    try {
+      // Reduz imagem para enviar à Gemini
+      let w = c.width, h = c.height;
+      const maxW = 1000;
+      if (w > maxW) { h = Math.round(h * maxW / w); w = maxW; }
+      const canvas2 = document.createElement('canvas');
+      canvas2.width = w; canvas2.height = h;
+      canvas2.getContext('2d').drawImage(c, 0, 0, w, h);
+      const photoDataUrl = canvas2.toDataURL('image/jpeg', 0.85);
+      
+      const geminiItems = await callGeminiForItems(photoDataUrl);
+      if (geminiItems && geminiItems.length > 0) {
+        items = geminiItems;
+        toast(`✅ ${items.length} artigo(s) detetados!`, 3000);
+      } else {
+        toast('⚠ Nenhum artigo detetado. Adicione manualmente.', 3000);
+      }
+    } catch(e) {
+      console.error('Erro ao extrair artigos:', e);
+      toast('⚠ Não foi possível ler artigos. Adicione manualmente.', 3000);
+    }
+    
+    showOCRLoading(false);
+    window.closeCam();
+    
+    // Prepara dados da fatura com prioridade ao QR
+    const invoiceData = {
+      supplier: '',  // QR não tem fornecedor, fica vazio para preencher manual
+      nif: qrData.nif || '',
+      nifClient: qrData.nifClient || '',
+      num: qrData.num || '',
+      date: qrData.date || new Date().toISOString().slice(0, 10),
+      total: qrData.total || 0,
+      vat: qrData.vat || 0,
+      atcud: qrData.atcud || '',
+      photo: c.toDataURL('image/jpeg', 0.8),
+      items: items,
+      source: 'qr+gemini'
+    };
+    
+    window.openInvoiceForm(invoiceData);
+    return;
+  }
+  
+  // 2. SE NÃO HÁ QR, TENTA EXTRAIR TUDO PELA GEMINI
+  toast('📷 A analisar fatura com IA...', 10000);
+  
+  // Reduz imagem
   let w = c.width, h = c.height;
-  const maxW = 1200;
+  const maxW = 1000;
   if (w > maxW) { h = Math.round(h * maxW / w); w = maxW; }
   const canvas2 = document.createElement('canvas');
   canvas2.width = w; canvas2.height = h;
   canvas2.getContext('2d').drawImage(c, 0, 0, w, h);
   const photoDataUrl = canvas2.toDataURL('image/jpeg', 0.85);
   
-  window.closeCam();
-  showOCRLoading(true);
-  toast('🧠 A analisar fatura com IA Gemini...', 15000);
-  
   try {
-    const result = await callGeminiOCR(photoDataUrl, qrData);
-    showOCRLoading(false);
-    
-    if (result && result.items && result.items.length > 0) {
-      result.photo = photoDataUrl;
-      result.source = 'gemini';
-      toast(`✅ ${result.items.length} artigo(s) extraído(s)!`);
-      window.openInvoiceForm(result);
-    } else if (result && result.items && result.items.length === 0) {
-      toast('⚠ Nenhum artigo detetado. Adicione manualmente.', 'err');
-      window.openInvoiceForm({ photo: photoDataUrl, items: [], source: 'manual', ...(qrData || {}) });
-    } else {
-      throw new Error('Resposta inválida');
+    // Tenta extrair tudo pela Gemini
+    const base64Image = photoDataUrl.split(',')[1];
+    const prompt = `Extrai TODOS os dados desta fatura portuguesa.
+Retorna APENAS JSON neste formato:
+{
+  "supplier": "nome do fornecedor",
+  "nif": "000000000",
+  "nifClient": "000000000",
+  "num": "FT 123/2024",
+  "date": "2024-01-15",
+  "total": 100.50,
+  "vat": 23.00,
+  "atcud": "ABC123",
+  "items": [{"name":"produto","qty":1,"unit":"un","unitPrice":10,"totalPrice":10,"vatRate":23}]
+}`;
+
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            { text: prompt },
+            { inline_data: { mime_type: "image/jpeg", data: base64Image } }
+          ]
+        }],
+        generationConfig: { temperature: 0.1 }
+      })
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      const textResponse = data.candidates[0].content.parts[0].text;
+      let cleanJson = textResponse.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+      const jsonMatch = cleanJson.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const result = JSON.parse(jsonMatch[0]);
+        result.photo = photoDataUrl;
+        result.source = 'gemini';
+        if (!result.items) result.items = [];
+        showOCRLoading(false);
+        window.closeCam();
+        window.openInvoiceForm(result);
+        return;
+      }
     }
   } catch(e) {
-    showOCRLoading(false);
-    console.error(e);
-    toast('❌ Erro ao analisar. Verifique a ligação à internet.', 'err');
-    window.openInvoiceForm({ photo: photoDataUrl, items: [], source: 'manual', ...(qrData || {}) });
+    console.error('Gemini full extraction error:', e);
   }
+  
+  // 3. FALLBACK: abre formulário vazio com a foto
+  showOCRLoading(false);
+  window.closeCam();
+  toast('⚠ Não foi possível ler a fatura. Preencha manualmente.', 'err');
+  window.openInvoiceForm({ photo: photoDataUrl, items: [], source: 'manual' });
 };
 
 // ============================================================
@@ -600,7 +668,7 @@ function renderDash() {
     <div class="stat b"><div class="stat-lbl">Últimos 30 dias</div><div class="stat-val">${eur(tot30)}</div><div class="stat-sub">${inv30.length} faturas</div></div>
     <div class="stat y"><div class="stat-lbl">Artigos</div><div class="stat-val">${articles.length}</div><div class="stat-sub">${families.length} famílias</div></div>
     <div class="stat ${unresolvedAlerts>0?'r':'g'}"><div class="stat-lbl">Alertas</div><div class="stat-val">${unresolvedAlerts}</div><div class="stat-sub">${unresolvedAlerts?'⚠ preços alterados':'✓ estável'}</div></div>`;
-  document.getElementById('dash-scan-btn').innerHTML=`<button class="dash-cam-btn" onclick="window.openOCRScan()"><span style="font-size:22px">📷</span><div><p style="font-size:13px;font-weight:700;color:var(--t)">Digitalizar Fatura</p><p style="font-size:11px;color:var(--t3);margin-top:1px">Foto + QR + IA Gemini</p></div><span style="font-size:18px;color:var(--acc);margin-left:auto">→</span></button>`;
+  document.getElementById('dash-scan-btn').innerHTML=`<button class="dash-cam-btn" onclick="window.openOCRScan()"><span style="font-size:22px">📷</span><div><p style="font-size:13px;font-weight:700;color:var(--t)">Digitalizar Fatura</p><p style="font-size:11px;color:var(--t3);margin-top:1px">Lê QR Code + Artigos</p></div><span style="font-size:18px;color:var(--acc);margin-left:auto">→</span></button>`;
   const dashAlerts=alerts.filter(a=>!a.resolved).slice(0,5);
   const alertsEl=document.getElementById('dash-alerts');
   if(dashAlerts.length){
@@ -617,7 +685,7 @@ function renderTopArticles() {
 }
 
 // ============================================================
-// FATURAS
+// FATURAS (resumidas mas funcionais)
 // ============================================================
 window.renderInvoiceList = function() {
   const q=(document.getElementById('inv-srch')?.value||'').toLowerCase();
@@ -652,7 +720,7 @@ function renderInvFilterChips(){ document.getElementById('inv-filter-chips').inn
 window.setInvFilter = function(f){ invFilter=f; renderInvFilterChips(); window.renderInvoiceList(); };
 
 // ============================================================
-// ARTIGOS
+// ARTIGOS (resumidos)
 // ============================================================
 window.renderArticleList = function() {
   const q=(document.getElementById('art-srch')?.value||'').toLowerCase();
@@ -705,7 +773,7 @@ function renderArtFilterChips(){ const opts=[{id:'todas',name:'Todas',icon:''},.
 window.setArtFilter = function(f){ artFilter=f; renderArtFilterChips(); window.renderArticleList(); };
 
 // ============================================================
-// ALERTAS
+// ALERTAS, CONFIG, FORMULÁRIO (resumidos mas funcionais)
 // ============================================================
 window.renderAlerts = function() {
   const list=alerts.filter(a=>!a.resolved).slice(0,50);
@@ -725,10 +793,6 @@ window.resolveAllAlerts = async function() {
   window.renderAlerts(); renderDash();
   toast('✓ Todos os alertas resolvidos');
 };
-
-// ============================================================
-// CONFIGURAÇÕES E FAMÍLIAS
-// ============================================================
 window.renderConfig = function() {
   document.getElementById('cfg-biz').value=userConfig?.biz||'';
   document.getElementById('cfg-nif').value=userConfig?.nif||'';
@@ -783,13 +847,9 @@ window.exportData = function() {
   URL.revokeObjectURL(a.href);
   toast('📤 Backup exportado!');
 };
-
-// ============================================================
-// FORMULÁRIO DE FATURA
-// ============================================================
 window.openInvoiceForm = function(data) {
   editInvId=data?.id||null;
-  formItems=data?.items?.map(i=>({...i,id:i.id||uid()}))||[];
+  formItems=data?.items?.map(i=>({...i,id:i.id||uid(),quantity:i.qty,unit_price:i.unitPrice,total_price:i.totalPrice}))||[];
   document.getElementById('m-inv-title').textContent=editInvId?'Editar Fatura':'Nova Fatura';
   const fields=[['Fornecedor','fi-sup','text',data?.supplier||'','full'],['NIF Fornecedor','fi-nif','text',data?.nif||'',''],['Nº Fatura','fi-num','text',data?.num||'',''],['Data','fi-date','date',data?.date||new Date().toISOString().slice(0,10),''],['Total (€)','fi-total','number',data?.total||'',''],['IVA (€)','fi-vat','number',data?.vat||'',''],['ATCUD','fi-atcud','text',data?.atcud||'','full']];
   const photoSection=data?.photo?`<div class="fi full"><label>FOTO DA FATURA</label><img src="${data.photo}" style="width:100%;border-radius:11px;max-height:180px;object-fit:cover"></div>`:'';
@@ -802,12 +862,12 @@ window.openInvoiceForm = function(data) {
 function renderFormItems() {
   const wrap=document.getElementById('form-items-list');
   if(!formItems.length){wrap.innerHTML=`<div style="text-align:center;padding:16px;color:var(--t3);font-size:12px">Sem artigos. Adicione manualmente.</div>`;return;}
-  wrap.innerHTML=formItems.map((item,i)=>{ const fam=famById(item.famId); return`<div class="form-item-row"><div class="fir-left"><div class="fir-fam" style="background:${fam.color}22;color:${fam.color}" onclick="window.editItemFamily('${item.id}')">${fam.icon}</div><div class="fir-info"><div style="font-size:12px;font-weight:700">${item.name||'Artigo'}</div><div style="font-size:10px;color:var(--t3)">${item.qty||1} ${item.unit||'un'} × ${eur(item.unitPrice||0)}</div></div></div><div style="display:flex;align-items:center;gap:7px"><span style="font-size:12px;font-weight:700">${eur(item.totalPrice||0)}</span><button class="btn-icon-sm" onclick="window.removeFormItem('${item.id}')">🗑</button></div></div>`; }).join('');
+  wrap.innerHTML=formItems.map((item,i)=>{ const fam=famById(item.famId); return`<div class="form-item-row"><div class="fir-left"><div class="fir-fam" style="background:${fam.color}22;color:${fam.color}" onclick="window.editItemFamily('${item.id}')">${fam.icon}</div><div class="fir-info"><div style="font-size:12px;font-weight:700">${item.name||'Artigo'}</div><div style="font-size:10px;color:var(--t3)">${item.quantity||1} ${item.unit||'un'} × ${eur(item.unit_price||0)}</div></div></div><div style="display:flex;align-items:center;gap:7px"><span style="font-size:12px;font-weight:700">${eur(item.total_price||0)}</span><button class="btn-icon-sm" onclick="window.removeFormItem('${item.id}')">🗑</button></div></div>`; }).join('');
 }
 window.removeFormItem = function(id){ formItems=formItems.filter(i=>i.id!==id); renderFormItems(); };
 window.openAddItemManual = function(){ openSheet('m-additem'); };
 window.calcItemTotal = function(){ const qty=parseFloat(document.getElementById('ai-qty')?.value)||1; const up=parseFloat(document.getElementById('ai-price')?.value)||0; const tot=document.getElementById('ai-total'); if(tot&&up>0)tot.value=(qty*up).toFixed(2); };
-window.saveFormItem = function(){ const g=id=>document.getElementById(id)?.value?.trim()||''; const qty=parseFloat(g('ai-qty'))||1; const unitPrice=parseFloat(g('ai-price'))||0; const totalPrice=parseFloat(g('ai-total'))||qty*unitPrice; const item={ id:uid(), name:g('ai-name'), qty, unit:g('ai-unit'), unitPrice, totalPrice, vatRate:parseFloat(g('ai-vatrate'))||23, famId:'' }; if(!item.name){toast('⚠ Insira o nome do artigo','err');return;} formItems.push(item); renderFormItems(); closeSheet('m-additem'); toast('✅ Artigo adicionado'); };
+window.saveFormItem = function(){ const g=id=>document.getElementById(id)?.value?.trim()||''; const qty=parseFloat(g('ai-qty'))||1; const unitPrice=parseFloat(g('ai-price'))||0; const totalPrice=parseFloat(g('ai-total'))||qty*unitPrice; const item={ id:uid(), name:g('ai-name'), quantity:qty, unit:g('ai-unit'), unit_price:unitPrice, total_price:totalPrice, vatRate:parseFloat(g('ai-vatrate'))||23, famId:'' }; if(!item.name){toast('⚠ Insira o nome do artigo','err');return;} formItems.push(item); renderFormItems(); closeSheet('m-additem'); toast('✅ Artigo adicionado'); };
 window.editItemFamily = function(itemId){ const item=formItems.find(i=>i.id===itemId); if(!item)return; document.getElementById('fam-picker-target').value=itemId; document.getElementById('fam-picker-grid').innerHTML=families.map(f=>`<div class="fam-pick-opt ${item.famId===f.id?'sel':''}" onclick="window.setItemFam('${itemId}','${f.id}',this)" style="border-color:${item.famId===f.id?f.color:'var(--b)'}"><span style="font-size:20px">${f.icon}</span><span style="font-size:11px;font-weight:700">${f.name}</span></div>`).join(''); openSheet('m-fampicker'); };
 window.setItemFam = function(itemId,famId,el){ const item=formItems.find(i=>i.id===itemId); if(item)item.famId=famId; document.querySelectorAll('.fam-pick-opt').forEach(e=>{e.classList.remove('sel');e.style.borderColor='var(--b)';}); const fam=famById(famId); el.classList.add('sel');el.style.borderColor=fam.color; renderFormItems(); setTimeout(()=>closeSheet('m-fampicker'),300); };
 window.saveInvoice = async function() {
@@ -817,7 +877,7 @@ window.saveInvoice = async function() {
   await supabaseClient.from('invoices').upsert(inv);
   await supabaseClient.from('invoice_items').delete().eq('invoice_id',inv.id);
   for(const item of formItems){
-    await supabaseClient.from('invoice_items').insert({ id:item.id||uid(), invoice_id:inv.id, name:item.name, quantity:item.qty, unit:item.unit, unit_price:item.unitPrice, total_price:item.totalPrice, vat_rate:item.vatRate, family_id:item.famId, user_id:currentUser.id });
+    await supabaseClient.from('invoice_items').insert({ id:item.id||uid(), invoice_id:inv.id, name:item.name, quantity:item.quantity, unit:item.unit, unit_price:item.unit_price, total_price:item.total_price, vat_rate:item.vatRate, family_id:item.famId, user_id:currentUser.id });
   }
   if(editInvId){ const idx=invoices.findIndex(i=>i.id===editInvId); if(idx>=0) invoices[idx]={...inv,items:formItems}; }
   else invoices.unshift({...inv,items:formItems});
@@ -828,7 +888,7 @@ window.saveInvoice = async function() {
 };
 
 // ============================================================
-// IMPORTAÇÃO DE PDF/IMAGEM COM GEMINI
+// IMPORTAÇÃO
 // ============================================================
 async function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
@@ -838,7 +898,6 @@ async function fileToDataUrl(file) {
     reader.readAsDataURL(file);
   });
 }
-
 async function pdfToImageDataUrl(pdfDataUrl) {
   if (!window.pdfjsLib) throw new Error('PDF.js não carregado');
   const pdfData = atob(pdfDataUrl.split(',')[1]);
@@ -852,14 +911,13 @@ async function pdfToImageDataUrl(pdfDataUrl) {
   canvas.height = viewport.height;
   await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
   let w = canvas.width, h = canvas.height;
-  const maxW = 1200;
+  const maxW = 1000;
   if (w > maxW) { h = Math.round(h * maxW / w); w = maxW; }
   const canvas2 = document.createElement('canvas');
   canvas2.width = w; canvas2.height = h;
   canvas2.getContext('2d').drawImage(canvas, 0, 0, w, h);
   return canvas2.toDataURL('image/jpeg', 0.85);
 }
-
 window.openImportFile = function() {
   const input = document.createElement('input');
   input.type = 'file';
@@ -879,15 +937,12 @@ window.openImportFile = function() {
           imgDataUrl = await pdfToImageDataUrl(dataUrl);
           if (!imgDataUrl) throw new Error('PDF não convertido');
         }
-        const ocrResult = await callGeminiOCR(imgDataUrl);
-        if (ocrResult && ocrResult.items) {
-          ocrResult.photo = imgDataUrl;
-          ocrResult.source = 'import';
-          ocrResult._filename = file.name;
-          results.push(ocrResult);
-        } else {
-          results.push({ _filename: file.name, _failed: true, items: [], source: 'import', photo: imgDataUrl });
-        }
+        const items = await callGeminiForItems(imgDataUrl);
+        results.push({
+          supplier: '', nif: '', num: '', date: new Date().toISOString().slice(0,10),
+          total: 0, vat: 0, atcud: '',
+          photo: imgDataUrl, items: items || [], source: 'import', _filename: file.name
+        });
       } catch(err) {
         console.error(err);
         results.push({ _filename: file.name, _failed: true, items: [], source: 'import' });
@@ -899,7 +954,6 @@ window.openImportFile = function() {
   };
   input.click();
 };
-
 function openImportReview(results) {
   importBatch = results;
   importItemMatches = [];
@@ -907,56 +961,28 @@ function openImportReview(results) {
     (inv.items || []).forEach((item, j) => {
       if (!item.name) return;
       const match = findBestMatch(item.name);
-      importItemMatches.push({
-        invIdx: idx, itemIdx: j, item,
-        match,
-        action: match ? (match.score >= 0.9 ? 'merge' : 'confirm') : 'new'
-      });
+      importItemMatches.push({ invIdx: idx, itemIdx: j, item, match, action: match ? (match.score >= 0.9 ? 'merge' : 'confirm') : 'new' });
     });
   });
   renderImportReview();
   openSheet('m-import-review');
 }
-
 function renderImportReview() {
   const summary = document.getElementById('ir-summary');
   if (!summary) return;
   const total = importBatch.length;
   const autoMerge = importItemMatches.filter(m => m.action === 'merge').length;
   const toReview = importItemMatches.filter(m => m.action !== 'merge').length;
-  summary.innerHTML = `
-    <div style="display:flex;gap:8px;margin-bottom:12px">
-      <div style="background:var(--s2);padding:8px;border-radius:8px;flex:1;text-align:center"><strong>${total}</strong><br>Faturas</div>
-      <div style="background:var(--s2);padding:8px;border-radius:8px;flex:1;text-align:center"><strong>${autoMerge}</strong><br>Auto-match</div>
-      <div style="background:var(--s2);padding:8px;border-radius:8px;flex:1;text-align:center"><strong>${toReview}</strong><br>A rever</div>
-    </div>`;
+  summary.innerHTML = `<div style="display:flex;gap:8px;margin-bottom:12px"><div style="background:var(--s2);padding:8px;border-radius:8px;flex:1;text-align:center"><strong>${total}</strong><br>Faturas</div><div style="background:var(--s2);padding:8px;border-radius:8px;flex:1;text-align:center"><strong>${autoMerge}</strong><br>Auto-match</div><div style="background:var(--s2);padding:8px;border-radius:8px;flex:1;text-align:center"><strong>${toReview}</strong><br>A rever</div></div>`;
   const invoicesDiv = document.getElementById('ir-invoices');
-  invoicesDiv.innerHTML = importBatch.map((inv, i) => `
-    <div style="border:1px solid var(--b);border-radius:12px;margin-bottom:12px;padding:10px">
-      <div><strong>${inv.supplier || inv._filename || 'Fatura ' + (i+1)}</strong> ${eur(inv.total)}</div>
-      <div>${inv.items?.length || 0} artigos</div>
-      ${renderImportItems(i)}
-    </div>
-  `).join('');
+  invoicesDiv.innerHTML = importBatch.map((inv, i) => `<div style="border:1px solid var(--b);border-radius:12px;margin-bottom:12px;padding:10px"><div><strong>${inv.supplier || inv._filename || 'Fatura ' + (i+1)}</strong> ${eur(inv.total)}</div><div>${inv.items?.length || 0} artigos</div>${renderImportItems(i)}</div>`).join('');
 }
 function renderImportItems(invIdx) {
   const matches = importItemMatches.filter(m => m.invIdx === invIdx);
   if (!matches.length) return '';
-  return `<div>${matches.map((m, idx) => {
-    const globalIdx = importItemMatches.indexOf(m);
-    return `<div style="display:flex;justify-content:space-between;margin-top:6px">
-      <span>${m.item.name}</span>
-      <select onchange="window.setImportAction(${globalIdx}, this.value)">
-        <option value="merge" ${m.action === 'merge' ? 'selected' : ''}>Associar</option>
-        <option value="new" ${m.action === 'new' ? 'selected' : ''}>Criar novo</option>
-        <option value="skip" ${m.action === 'skip' ? 'selected' : ''}>Ignorar</option>
-      </select>
-    </div>`;
-  }).join('')}</div>`;
+  return `<div>${matches.map((m, idx) => { const globalIdx = importItemMatches.indexOf(m); return `<div style="display:flex;justify-content:space-between;margin-top:6px"><span>${m.item.name}</span><select onchange="window.setImportAction(${globalIdx}, this.value)"><option value="merge" ${m.action === 'merge' ? 'selected' : ''}>Associar</option><option value="new" ${m.action === 'new' ? 'selected' : ''}>Criar novo</option><option value="skip" ${m.action === 'skip' ? 'selected' : ''}>Ignorar</option></select></div>`; }).join('')}</div>`;
 }
-window.setImportAction = function(idx, action) {
-  if (importItemMatches[idx]) importItemMatches[idx].action = action;
-};
+window.setImportAction = function(idx, action) { if (importItemMatches[idx]) importItemMatches[idx].action = action; };
 window.confirmImport = async function() {
   closeSheet('m-import-review');
   toast('💾 A guardar...', 5000);
@@ -978,22 +1004,16 @@ window.confirmImport = async function() {
           await supabaseClient.from('articles').insert({ id: art.id, name: art.name, family_id: art.family_id, unit: art.unit, user_id: currentUser.id });
         }
       }
-      if (art && m.item.unitPrice) {
-        art.prices.push({ date: inv.date || new Date().toISOString().slice(0,10), price: m.item.unitPrice, quantity: m.item.qty, invoice_id: invId });
-        await supabaseClient.from('article_prices').insert({ id: uid(), article_id: art.id, price: m.item.unitPrice, quantity: m.item.qty, date: inv.date, invoice_id: invId, user_id: currentUser.id });
+      if (art && m.item.unit_price) {
+        art.prices.push({ date: inv.date || new Date().toISOString().slice(0,10), price: m.item.unit_price, quantity: m.item.quantity, invoice_id: invId });
+        await supabaseClient.from('article_prices').insert({ id: uid(), article_id: art.id, price: m.item.unit_price, quantity: m.item.quantity, date: inv.date, invoice_id: invId, user_id: currentUser.id });
       }
       processedItems.push({ ...m.item, article_id: art?.id });
     }
-    const newInv = {
-      id: invId, supplier: inv.supplier || '', nif: inv.nif || '', num: inv.num || '', date: inv.date || new Date().toISOString().slice(0,10),
-      total: inv.total || 0, vat: inv.vat || 0, atcud: inv.atcud || '', photo: inv.photo, status: 'pendente', user_id: currentUser.id
-    };
+    const newInv = { id: invId, supplier: inv.supplier || '', nif: inv.nif || '', num: inv.num || '', date: inv.date || new Date().toISOString().slice(0,10), total: inv.total || 0, vat: inv.vat || 0, atcud: inv.atcud || '', photo: inv.photo, status: 'pendente', user_id: currentUser.id };
     await supabaseClient.from('invoices').insert(newInv);
     for (const it of processedItems) {
-      await supabaseClient.from('invoice_items').insert({
-        id: uid(), invoice_id: invId, name: it.name, quantity: it.qty, unit: it.unit, unit_price: it.unitPrice,
-        total_price: it.totalPrice, vat_rate: it.vatRate, family_id: it.famId, user_id: currentUser.id
-      });
+      await supabaseClient.from('invoice_items').insert({ id: uid(), invoice_id: invId, name: it.name, quantity: it.quantity, unit: it.unit, unit_price: it.unit_price, total_price: it.total_price, vat_rate: it.vatRate, family_id: it.famId, user_id: currentUser.id });
     }
     invoices.unshift({ ...newInv, items: processedItems });
   }
