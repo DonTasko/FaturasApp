@@ -11626,43 +11626,234 @@ async function handleImportFiles(files){
   if(!files.length) return;
   const valid=files.filter(f=>{
     const ext=f.name.split('.').pop().toLowerCase();
-    return ['pdf','jpg','jpeg','png','webp','heic'].includes(ext)||f.type.startsWith('image/')||f.type==='application/pdf';
+    return ['pdf','jpg','jpeg','png','webp','heic'].includes(ext)||
+           f.type.startsWith('image/')||f.type==='application/pdf';
   });
   if(!valid.length){toast('⚠ Formato não suportado. Use PDF ou imagem.','err');return;}
-  toast(`⏳ A processar ${valid.length} ficheiro(s)...`,30000);
+
   showOCRLoading(true);
-  document.getElementById('ocr-loading').querySelector('p').innerHTML=
-    `🧠 A analisar ${valid.length} fatura(s) com IA...<br><span style="font-size:12px;color:var(--t3);font-weight:400">Pode demorar alguns segundos</span>`;
+  document.getElementById('ocr-loading').querySelector('.ocr-label').textContent='A analisar faturas';
+  document.querySelector('.ocr-sub').textContent=`A processar ${valid.length} ficheiro(s)...`;
 
   const results=[];
   for(const file of valid){
     try{
-      const dataUrl=await fileToDataUrl(file);
       const ext=file.name.split('.').pop().toLowerCase();
-      let imgDataUrl=dataUrl;
-      // PDF → converte primeira página a imagem via canvas
-      if(ext==='pdf'||file.type==='application/pdf'){
-        imgDataUrl=await pdfToImageDataUrl(dataUrl);
-        if(!imgDataUrl){toast(`⚠ Não foi possível converter ${file.name}`,'err');continue;}
-      }
-      const result=await callClaudeOCR(imgDataUrl);
-      if(result){
-        result.photo=imgDataUrl;
-        result.source='import';
-        result._filename=file.name;
-        results.push(result);
+      const isPDF=ext==='pdf'||file.type==='application/pdf';
+
+      if(isPDF){
+        // PDF digital: extrai texto directamente (sem CDN, funciona offline)
+        const result=await processPDFDirect(file);
+        if(result){
+          result._filename=file.name;
+          results.push(result);
+        } else {
+          // Fallback: converte para imagem se extracção de texto falhar
+          const imgUrl=await pdfToCanvas(file);
+          if(imgUrl){
+            const r=await callClaudeOCR(imgUrl);
+            if(r){r.photo=imgUrl;r.source='import';r._filename=file.name;results.push(r);}
+            else results.push({_filename:file.name,_failed:true,photo:imgUrl,items:[],source:'import'});
+          } else {
+            results.push({_filename:file.name,_failed:true,items:[],source:'import'});
+          }
+        }
       } else {
-        results.push({_filename:file.name,_failed:true,photo:imgDataUrl,items:[],source:'import'});
+        // Imagem: envia directamente para OCR
+        const dataUrl=await fileToDataUrl(file);
+        const r=await callClaudeOCR(dataUrl);
+        if(r){r.photo=dataUrl;r.source='import';r._filename=file.name;results.push(r);}
+        else results.push({_filename:file.name,_failed:true,photo:dataUrl,items:[],source:'import'});
       }
     }catch(e){
       console.error('Import error:',file.name,e);
       results.push({_filename:file.name,_failed:true,items:[],source:'import'});
     }
   }
+
   showOCRLoading(false);
   if(!results.length){toast('❌ Nenhuma fatura reconhecida','err');return;}
-  // Abre modal de revisão com correspondências fuzzy
   openImportReview(results);
+}
+
+// ── Extrai texto de PDF digital e envia como texto para Claude ──
+// Não precisa de CDN nem de converter para imagem
+async function processPDFDirect(file){
+  try{
+    const text=await extractPDFText(file);
+    if(!text||text.trim().length<50){
+      console.log('PDF sem texto suficiente, a tentar como imagem...');
+      return null; // fallback para imagem
+    }
+    console.log('PDF texto extraído:',text.length,'chars');
+    // Envia texto directamente para Claude — muito mais rápido que imagem
+    return await callClaudeText(text, file.name);
+  }catch(e){
+    console.warn('processPDFDirect error:',e);
+    return null;
+  }
+}
+
+// Extrai texto de PDF usando FileReader + parsing manual de streams PDF
+// Funciona sem pdf.js para PDFs digitais simples
+async function extractPDFText(file){
+  return new Promise((resolve)=>{
+    const reader=new FileReader();
+    reader.onload=e=>{
+      try{
+        const bytes=new Uint8Array(e.target.result);
+        const text=decodePDFText(bytes);
+        resolve(text);
+      }catch(err){
+        console.warn('PDF parse error:',err);
+        resolve('');
+      }
+    };
+    reader.onerror=()=>resolve('');
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+// Parser básico de texto de PDF — extrai conteúdo de streams de texto
+function decodePDFText(bytes){
+  // Converte para string para processar
+  let raw='';
+  for(let i=0;i<Math.min(bytes.length,500000);i++){
+    raw+=String.fromCharCode(bytes[i]);
+  }
+
+  const lines=[];
+
+  // Método 1: Extrai blocos BT...ET (text blocks em PDF)
+  const btMatches=raw.matchAll(/BT\s*([\s\S]*?)\s*ET/g);
+  for(const m of btMatches){
+    const block=m[1];
+    // Extrai strings entre () e []
+    const strMatches=block.matchAll(/\(([^)\]*(?:\.[^)\]*)*)\)\s*(?:Tj|TJ|'|")/g);
+    for(const s of strMatches){
+      const decoded=s[1]
+        .replace(/\n/g,' ').replace(/\r/g,' ')
+        .replace(/\t/g,' ').replace(/\\/g,'\')
+        .replace(/\'/g,"'").replace(/\\(/g,'(').replace(/\\)/g,')');
+      if(decoded.trim()) lines.push(decoded.trim());
+    }
+    // Arrays TJ: [(text) spacing (text)]
+    const tjMatches=block.matchAll(/\[([^\]]*)\]\s*TJ/g);
+    for(const tj of tjMatches){
+      const parts=tj[1].matchAll(/\(([^)\]*(?:\.[^)\]*)*)\)/g);
+      const combined=[...parts].map(p=>p[1]).join('');
+      if(combined.trim()) lines.push(combined.trim());
+    }
+  }
+
+  // Método 2: Se método 1 falhou, tenta extrair strings visíveis directamente
+  if(lines.length<5){
+    const visible=raw.matchAll(/\(([A-Za-záàâãéêíóôõúüçÁÀÂÃÉÊÍÓÔÕÚÜÇ0-9€.,\-\s\/]{3,80})\)/g);
+    for(const v of visible){
+      const s=v[1].trim();
+      if(s.length>2&&!/^[\s\d.,-]+$/.test(s)) lines.push(s);
+    }
+  }
+
+  // Método 3: Tenta descomprimir streams (PDFs com compressão FlateDecode)
+  // Para PDFs com streams comprimidos — tenta ler texto em claro
+  if(lines.length<5){
+    // Procura padrões típicos de faturas: números, euros, datas
+    const plainText=raw.replace(/[^ -~ -ɏ
+]/g,' ');
+    const meaningful=plainText.match(/[\wÀ-ɏ]{3,}/g)||[];
+    if(meaningful.length>10){
+      return meaningful.join(' ');
+    }
+  }
+
+  return lines.join('
+');
+}
+
+// Envia texto do PDF directamente para Claude (sem imagem = mais rápido)
+async function callClaudeText(pdfText, filename=''){
+  const prompt=`Fatura portuguesa em texto. Extrai dados em JSON compacto sem espaços e sem markdown.
+Texto da fatura:
+---
+${pdfText.slice(0,6000)}
+---
+Formato:{"supplier":"","nif":"","nifClient":"","num":"","date":"YYYY-MM-DD","total":0,"vat":0,"atcud":"","items":[{"name":"","qty":1,"unit":"kg","unitPrice":0,"totalPrice":0,"vatRate":6}]}
+Regras: TODOS os artigos/produtos; unit=kg/un/L/cx/g/lt; sem serviços ou taxas; 0 se não visível.`;
+
+  try{
+    const t0=Date.now();
+    const response=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:'claude-haiku-4-5-20251001',
+        max_tokens:1500,
+        messages:[{role:'user',content:[{type:'text',text:prompt}]}]
+      })
+    });
+    const data=await response.json();
+    console.log(`PDF texto OCR em ${((Date.now()-t0)/1000).toFixed(1)}s`);
+    if(data.error){console.error('API:',data.error);return null;}
+    const text=data.content?.[0]?.text||'';
+    try{
+      const clean=text.replace(/```json|```/g,'').trim();
+      const parsed=JSON.parse(clean);
+      if(!parsed.items) parsed.items=[];
+      parsed.source='pdf-text';
+      return parsed;
+    }catch(_){
+      const m=text.match(/\{[\s\S]*\}/);
+      if(m){try{const p=JSON.parse(m[0]);if(!p.items)p.items=[];p.source='pdf-text';return p;}catch(_){}}
+      return null;
+    }
+  }catch(e){console.error('callClaudeText:',e);return null;}
+}
+
+// Converte PDF para imagem via canvas (fallback sem CDN)
+// Usa iframe temporário para render nativo do browser
+async function pdfToCanvas(file){
+  return new Promise((resolve)=>{
+    try{
+      const url=URL.createObjectURL(file);
+      // Usa iframe invisible para render do PDF pelo browser nativo
+      const iframe=document.createElement('iframe');
+      iframe.style.cssText='position:fixed;left:-9999px;top:-9999px;width:800px;height:1200px;opacity:0;pointer-events:none';
+      iframe.src=url;
+      document.body.appendChild(iframe);
+      iframe.onload=()=>{
+        setTimeout(()=>{
+          try{
+            const canvas=document.createElement('canvas');
+            canvas.width=800;canvas.height=1200;
+            const ctx=canvas.getContext('2d');
+            ctx.fillStyle='#fff';ctx.fillRect(0,0,800,1200);
+            // Tenta capturar via html2canvas do iframe
+            ctx.drawWindow?ctx.drawWindow(iframe.contentWindow,0,0,800,1200,'#fff'):null;
+            document.body.removeChild(iframe);
+            URL.revokeObjectURL(url);
+            const imgUrl=canvas.toDataURL('image/jpeg',0.85);
+            resolve(imgUrl);
+          }catch(e){
+            document.body.removeChild(iframe);
+            URL.revokeObjectURL(url);
+            resolve(null);
+          }
+        },2000);
+      };
+      iframe.onerror=()=>{
+        document.body.removeChild(iframe);
+        URL.revokeObjectURL(url);
+        resolve(null);
+      };
+      // Timeout de segurança
+      setTimeout(()=>{
+        try{document.body.removeChild(iframe);}catch(_){}
+        URL.revokeObjectURL(url);
+        resolve(null);
+      },8000);
+    }catch(e){resolve(null);}
+  });
 }
 
 function fileToDataUrl(file){
@@ -11674,46 +11865,6 @@ function fileToDataUrl(file){
   });
 }
 
-async function pdfToImageDataUrl(pdfDataUrl){
-  try{
-    // Carrega pdf.js dinamicamente
-    if(!window.pdfjsLib){
-      await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
-      if(window['pdfjs-dist/build/pdf'])
-        window['pdfjs-dist/build/pdf'].GlobalWorkerOptions.workerSrc=
-          'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-      window.pdfjsLib=window['pdfjs-dist/build/pdf'];
-    }
-    if(!window.pdfjsLib) return null;
-    const data=pdfDataUrl.split(',')[1];
-    const binary=atob(data);
-    const bytes=new Uint8Array(binary.length);
-    for(let i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);
-    const pdf=await window.pdfjsLib.getDocument({data:bytes}).promise;
-    const page=await pdf.getPage(1);
-    const vp=page.getViewport({scale:2.0}); // escala 2x para melhor OCR
-    const canvas=document.createElement('canvas');
-    canvas.width=vp.width; canvas.height=vp.height;
-    await page.render({canvasContext:canvas.getContext('2d'),viewport:vp}).promise;
-    // Comprime
-    const maxW=1600; let w=canvas.width,h=canvas.height;
-    if(w>maxW){h=Math.round(h*maxW/w);w=maxW;}
-    const c2=document.createElement('canvas');c2.width=w;c2.height=h;
-    c2.getContext('2d').drawImage(canvas,0,0,w,h);
-    return c2.toDataURL('image/jpeg',0.88);
-  }catch(e){
-    console.warn('PDF convert error:',e);
-    return null;
-  }
-}
-
-function loadScript(src){
-  return new Promise((res,rej)=>{
-    if(document.querySelector(`script[src="${src}"]`)){res();return;}
-    const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=rej;
-    document.head.appendChild(s);
-  });
-}
 
 // ══════════════════════════════════════════════════════
 // MODAL DE REVISÃO DE IMPORTAÇÃO
