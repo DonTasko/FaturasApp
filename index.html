@@ -11318,86 +11318,81 @@ function showOCRLoading(show){
 // ── Claude API para OCR ──
 async function callClaudeOCR(base64DataUrl, qrData=null){
   const base64=base64DataUrl.split(',')[1];
-  const qrContext=qrData?`
-Dados já conhecidos do QR Code AT da fatura (usa estes valores onde aplicável):
-- NIF Fornecedor: ${qrData.nif||'desconhecido'}
-- NIF Cliente: ${qrData.nifClient||'desconhecido'}
-- Número: ${qrData.num||'desconhecido'}
-- Data: ${qrData.date||'desconhecida'}
-- Total: ${qrData.total||0}€
-- IVA: ${qrData.vat||0}€
-- ATCUD: ${qrData.atcud||'desconhecido'}
-`:'';
 
-  const response=await fetch('https://api.anthropic.com/v1/messages',{
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({
-      model:'claude-sonnet-4-20250514',
-      max_tokens:4000,
-      messages:[{
-        role:'user',
-        content:[
-          {type:'image',source:{type:'base64',media_type:'image/jpeg',data:base64}},
-          {type:'text',text:`Analisa esta fatura portuguesa e extrai TODOS os artigos/produtos listados.
-${qrContext}
-Responde APENAS com JSON puro (sem markdown, sem \`\`\`, sem texto antes ou depois).
+  // Campos já conhecidos via QR — não precisamos extraí-los, poupa tokens
+  const knownFields=qrData?`QR:nif=${qrData.nif||''},num=${qrData.num||''},date=${qrData.date||''},total=${qrData.total||0},vat=${qrData.vat||0},atcud=${qrData.atcud||''}`:'' ;
 
-Formato obrigatório:
-{
-  "supplier": "nome completo do fornecedor/empresa emissora",
-  "nif": "NIF de 9 dígitos do fornecedor",
-  "nifClient": "NIF de 9 dígitos do cliente",
-  "num": "número da fatura ex: FT 001/0123",
-  "date": "YYYY-MM-DD",
-  "total": 0.00,
-  "vat": 0.00,
-  "atcud": "código ATCUD se visível",
-  "items": [
-    {
-      "name": "nome descritivo do artigo (ex: Frango inteiro, Azeite virgem extra, Detergente loiça)",
-      "qty": 1.0,
-      "unit": "kg ou un ou L ou cx ou lt ou g ou dz",
-      "unitPrice": 0.00,
-      "totalPrice": 0.00,
-      "vatRate": 6
-    }
-  ]
+  // Prompt ultra-compacto — menos tokens = resposta 3x mais rápida
+  const prompt=`Fatura portuguesa. Extrai artigos em JSON compacto sem espaços.${knownFields?'\n'+knownFields:''}
+Formato(sem markdown):{"supplier":"","nif":"","nifClient":"","num":"","date":"YYYY-MM-DD","total":0,"vat":0,"atcud":"","items":[{"name":"","qty":1,"unit":"kg","unitPrice":0,"totalPrice":0,"vatRate":6}]}
+Regras:todos os artigos;unit=kg/un/L/cx/g/lt;sem serviços ou taxas;0 se não visível.`;
+
+  // Tenta Haiku primeiro (3-4x mais rápido, bom para OCR estruturado)
+  const result = await _claudeCall('claude-haiku-4-5-20251001', 1200, base64, prompt);
+  if(result && result.items && result.items.length > 0){
+    // Merge com dados QR (mais fiáveis)
+    if(qrData) _mergeQR(result, qrData);
+    return result;
+  }
+
+  // Fallback: Sonnet com prompt mais detalhado se Haiku falhou
+  console.log('Haiku fallback para Sonnet...');
+  const promptFull=`Fatura portuguesa. JSON puro sem markdown.${knownFields?'\n'+knownFields:''}
+{"supplier":"nome","nif":"9dig","nifClient":"9dig","num":"FT xxx","date":"YYYY-MM-DD","total":0.00,"vat":0.00,"atcud":"","items":[{"name":"nome artigo completo","qty":1.0,"unit":"kg","unitPrice":0.00,"totalPrice":0.00,"vatRate":6}]}
+TODOS os artigos. unit normalizado: kg/un/L/cx/g/lt/dz. Sem taxas/portes.`;
+  const result2 = await _claudeCall('claude-sonnet-4-20250514', 3000, base64, promptFull);
+  if(result2 && qrData) _mergeQR(result2, qrData);
+  return result2;
 }
 
-INSTRUÇÕES CRÍTICAS:
-- Extrai TODOS os artigos da fatura, mesmo que sejam muitos
-- Para cada linha de produto na fatura cria um item separado
-- "name": usa o nome real do artigo conforme aparece na fatura, não abrevies
-- "qty": quantidade numérica (ex: 2.5 para 2,5 kg)
-- "unit": normaliza sempre para kg/un/L/cx/g/lt/dz
-- "unitPrice": preço por unidade/kg/litro
-- "totalPrice": qty × unitPrice
-- "vatRate": taxa de IVA em % (6, 13 ou 23)
-- Se um campo não for visível usa "" para texto ou 0 para números
-- Não incluas serviços, taxas, portes — apenas produtos/artigos`}
-        ]
-      }]
-    })
-  });
-  const data=await response.json();
-  if(data.error){console.error('Claude API error:',data.error);return null;}
-  const text=data.content?.[0]?.text||'';
-  console.log('OCR raw response:',text.slice(0,200));
+// Merge dados QR (mais fiáveis) sobre resultado OCR
+function _mergeQR(result, qr){
+  if(qr.nif)       result.nif       = qr.nif;
+  if(qr.nifClient) result.nifClient = qr.nifClient;
+  if(qr.num)       result.num       = qr.num;
+  if(qr.date)      result.date      = qr.date;
+  if(qr.total)     result.total     = qr.total;
+  if(qr.vat)       result.vat       = qr.vat;
+  if(qr.atcud)     result.atcud     = qr.atcud;
+}
+
+async function _claudeCall(model, maxTokens, base64, prompt){
   try{
-    const clean=text.replace(/```json[\s\S]*?```|```[\s\S]*?```/g,m=>m.slice(m.indexOf('\n')+1,-3)).replace(/```/g,'').trim();
-    const parsed=JSON.parse(clean);
-    // Valida estrutura mínima
-    if(!parsed.items) parsed.items=[];
-    return parsed;
+    const t0=Date.now();
+    const response=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model, max_tokens:maxTokens,
+        messages:[{role:'user',content:[
+          {type:'image',source:{type:'base64',media_type:'image/jpeg',data:base64}},
+          {type:'text',text:prompt}
+        ]}]
+      })
+    });
+    const data=await response.json();
+    const elapsed=((Date.now()-t0)/1000).toFixed(1);
+    console.log(`OCR ${model} em ${elapsed}s`);
+    if(data.error){console.error('API error:',data.error);return null;}
+    const text=data.content?.[0]?.text||'';
+    // Parse JSON robusto
+    try{
+      const clean=text.replace(/```json|```/g,'').trim();
+      const parsed=JSON.parse(clean);
+      if(!parsed.items) parsed.items=[];
+      return parsed;
+    }catch(_){
+      // Tenta extrair bloco JSON mesmo com texto à volta
+      const m=text.match(/\{[\s\S]*\}/);
+      if(m){try{const p=JSON.parse(m[0]);if(!p.items)p.items=[];return p;}catch(_){}}
+      return null;
+    }
   }catch(e){
-    console.warn('OCR parse error:',e.message,'\nRaw:',text.slice(0,500));
-    // Tenta extrair JSON mesmo que haja texto à volta
-    const m=text.match(/\{[\s\S]*\}/);
-    if(m){try{return JSON.parse(m[0]);}catch(_){}}
+    console.error('_claudeCall error:',e);
     return null;
   }
 }
+
 
 function stopCam(){
   if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null;}
