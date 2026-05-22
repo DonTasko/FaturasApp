@@ -11446,10 +11446,13 @@ async function handleImportFiles(files){
           if(r2){r2.photo=imgUrl;r2._filename=file.name;r2.source='pdf-img';results.push(r2);continue;}
         }
 
-        // 5. Guarda o que o parser local encontrou mesmo sem artigos
+        // 5. Guarda cabeçalho mesmo sem artigos — utilizador pode adicionar manualmente
         if(text&&text.length>50){
           const local2=parseInvoiceText(text,file.name)||{};
           local2._filename=file.name;local2.source='pdf-local';local2.items=local2.items||[];
+          if(!local2.items.length){
+            toast('⚠ Artigos não reconhecidos automaticamente. Verifique e adicione manualmente.','err',6000);
+          }
           results.push(local2);
         } else {
           results.push({_filename:file.name,_failed:true,items:[],source:'pdf'});
@@ -11560,44 +11563,34 @@ async function parsePDFBytes(bytes) {
 }
 
 // Descomprime zlib/deflate usando DecompressionStream nativo
-// Robusto: aceita dados extra no fim (junk after end)
 async function decompressZlib(data) {
-  // Tenta 3 variantes por ordem de probabilidade em PDFs
-  const variants = [
-    {mode:'deflate-raw', slice: data[0]===0x78 ? data.slice(2) : data},
-    {mode:'deflate-raw', slice: data},
-    {mode:'deflate',     slice: data},
-  ];
-  for(const {mode, slice} of variants){
-    try{
-      const chunks=[], ds=new DecompressionStream(mode);
-      const writer=ds.writable.getWriter();
-      const reader=ds.readable.getReader();
-      // Escreve em chunks pequenos para tolerar dados extra no fim
-      const CHUNK=65536;
-      (async()=>{
-        try{
-          for(let i=0;i<slice.length;i+=CHUNK){
-            await writer.write(slice.slice(i,i+CHUNK));
-          }
-        }catch(_){}
-        try{writer.close();}catch(_){}
-      })();
-      let totalLen=0;
+  const modes = ['deflate-raw','deflate'];
+  const slices = data[0]===0x78 ? [data.slice(2), data] : [data];
+  for(const mode of modes){
+    for(const slice of slices){
       try{
-        while(true){
-          const {done,value}=await reader.read();
-          if(done)break;
-          chunks.push(value);totalLen+=value.length;
-          if(totalLen>3000000)break;
-        }
-      }catch(_){} // ignora "junk after end"
-      if(!chunks.length)continue;
-      const result=new Uint8Array(totalLen);
-      let off=0;for(const c of chunks){result.set(c,off);off+=c.length;}
-      let text='';for(let i=0;i<result.length;i++)text+=String.fromCharCode(result[i]);
-      if(text.length>10)return text; // sucesso
-    }catch(_){continue;}
+        const blob = new Blob([slice]);
+        const ds = new DecompressionStream(mode);
+        const stream = blob.stream().pipeThrough(ds);
+        const reader = stream.getReader();
+        const chunks = []; let totalLen = 0;
+        try{
+          while(true){
+            const {done,value} = await reader.read();
+            if(done) break;
+            chunks.push(value); totalLen += value.length;
+            if(totalLen > 3000000) break;
+          }
+        }catch(_){} // ignora junk after end
+        if(!chunks.length) continue;
+        const out = new Uint8Array(totalLen);
+        let off = 0;
+        for(const c of chunks){ out.set(c,off); off+=c.length; }
+        let text = '';
+        for(let i=0;i<out.length;i++) text += String.fromCharCode(out[i]);
+        if(text.length > 20) return text;
+      }catch(_){ continue; }
+    }
   }
   return null;
 }
@@ -11647,7 +11640,9 @@ function parseInvoiceText(text, filename) {
   if(!text || text.trim().length < 20) return null;
 
   const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-  console.log(`Parser: ${lines.length} linhas`);
+  console.log('Parser: '+lines.length+' linhas');
+  // Log primeiras 20 linhas para debug
+  if(lines.length>0) console.log('Amostra PDF:\n'+lines.slice(0,20).join('\n'));
 
   const result = {
     supplier: '',
