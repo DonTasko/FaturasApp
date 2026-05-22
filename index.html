@@ -11487,153 +11487,168 @@ function fileToDataUrl(file){
 // ── Extractor de texto PDF com suporte FlateDecode (sem CDN) ──
 // Usa DecompressionStream nativo do browser para descomprimir streams PDF
 
-async function extractPDFText(file) {
-  return new Promise(resolve => {
-    const reader = new FileReader();
-    reader.onload = async e => {
-      try {
-        const bytes = new Uint8Array(e.target.result);
-        const text = await parsePDFBytes(bytes);
+
+async function extractPDFText(file){
+  return new Promise(resolve=>{
+    const reader=new FileReader();
+    reader.onload=async e=>{
+      try{
+        const bytes=new Uint8Array(e.target.result);
+        const text=await parsePDFBytes(bytes);
         resolve(text);
-      } catch(err) {
-        console.warn('PDF parse error:', err);
-        resolve('');
-      }
+      }catch(err){console.warn('PDF parse:',err);resolve('');}
     };
-    reader.onerror = () => resolve('');
+    reader.onerror=()=>resolve('');
     reader.readAsArrayBuffer(file);
   });
 }
 
-async function parsePDFBytes(bytes) {
-  // Converte para string para encontrar estruturas do PDF
-  let raw = '';
-  for(let i = 0; i < bytes.length; i++) raw += String.fromCharCode(bytes[i]);
+async function parsePDFBytes(bytes){
+  let raw='';
+  for(let i=0;i<Math.min(bytes.length,600000);i++) raw+=String.fromCharCode(bytes[i]);
 
-  const textLines = [];
+  const fragments=[];
 
-  // ── Método 1: Descomprime streams FlateDecode (Makro, Metro, etc.) ──
-  // Encontra todos os streams comprimidos
-  const streamRe = /stream\r?\n/g;
-  let sm;
-  while((sm = streamRe.exec(raw)) !== null) {
-    const streamStart = sm.index + sm[0].length;
-    const endIdx = raw.indexOf('endstream', streamStart);
-    if(endIdx < 0 || endIdx - streamStart > 500000) continue;
-
-    // Verifica se é FlateDecode (zlib)
-    const headerArea = raw.substring(Math.max(0, sm.index - 500), sm.index);
-    if(!headerArea.includes('FlateDecode') && !headerArea.includes('Fl\n')) continue;
-
-    try {
-      // Extrai bytes do stream
-      const streamBytes = bytes.slice(streamStart, endIdx);
-      // Descomprime com DecompressionStream (nativo no browser)
-      const decompressed = await decompressZlib(streamBytes);
-      if(decompressed) {
-        const decoded = extractTextFromStream(decompressed);
-        if(decoded) textLines.push(...decoded);
-      }
-    } catch(_) {}
+  // Descomprime streams FlateDecode
+  const sTag='stream\n';
+  let pos=0;
+  while(true){
+    let si=raw.indexOf('stream\n',pos);
+    if(si<0){si=raw.indexOf('stream\r\n',pos);}
+    if(si<0) break;
+    const start=raw.indexOf('\n',si)+1;
+    const end=raw.indexOf('endstream',start);
+    if(end<0||end-start>300000){pos=si+7;continue;}
+    const hdr=raw.substring(Math.max(0,si-400),si);
+    if(hdr.indexOf('FlateDecode')>=0){
+      try{
+        const data=bytes.slice(start,end);
+        const text=await decompressZlib(data);
+        if(text&&text.length>10) parseStreamFragments(text,fragments);
+      }catch(_){}
+    }
+    pos=end+9;
   }
 
-  // ── Método 2: Streams não comprimidos (texto directo) ──
-  if(textLines.length < 5) {
-    const btRe = /BT([\s\S]{1,3000}?)ET/g;
-    let bm;
-    while((bm = btRe.exec(raw)) !== null) {
-      const lines = extractTextFromStream(bm[1]);
-      if(lines) textLines.push(...lines);
+  // Texto não comprimido
+  parseStreamFragments(raw,fragments);
+
+  if(!fragments.length) return '';
+
+  // Agrupa por Y (±4 unidades = mesma linha)
+  fragments.sort((a,b)=>b.y-a.y||a.x-b.x);
+  const groups=[];
+  let cur=null;
+  for(const f of fragments){
+    if(!f.text.trim()) continue;
+    if(!cur||Math.abs(cur.y-f.y)>4){
+      cur={y:f.y,frags:[f]};
+      groups.push(cur);
+    } else {
+      cur.frags.push(f);
     }
   }
 
-  // ── Método 3: Strings literais visíveis (último recurso) ──
-  if(textLines.length < 5) {
-    const pRe = /\(([A-Za-z\u00C0-\u024F0-9\u20AC.,\-\s\/]{3,80})\)/g;
-    let pm;
-    while((pm = pRe.exec(raw)) !== null) {
-      const s = pm[1].trim();
-      if(s.length > 2) textLines.push(s);
-    }
-  }
+  const lines=groups.map(g=>{
+    g.frags.sort((a,b)=>a.x-b.x);
+    return g.frags.map(f=>f.text).join(' ').trim();
+  }).filter(l=>l.length>0);
 
-  const result = textLines.join('\n');
-  console.log(`PDF extraído: ${textLines.length} linhas, ${result.length} chars`);
-  return result;
+  console.log('PDF reconstruido: '+lines.length+' linhas');
+  lines.slice(0,50).forEach((l,i)=>console.log(i+': '+l));
+  return lines.join('\n');
 }
 
-// Descomprime zlib/deflate usando DecompressionStream nativo
-async function decompressZlib(data) {
-  const modes = ['deflate-raw','deflate'];
-  const slices = data[0]===0x78 ? [data.slice(2), data] : [data];
+function parseStreamFragments(stream,fragments){
+  let curX=0,curY=0;
+  const lines=stream.split('\n');
+  for(let i=0;i<lines.length;i++){
+    const l=lines[i].trim();
+    if(!l) continue;
+
+    // Posicao: "x y Td"
+    const sp=l.split(' ');
+    if(sp.length===3&&sp[2]==='Td'){
+      const x=parseFloat(sp[0]),y=parseFloat(sp[1]);
+      if(!isNaN(x)&&!isNaN(y)){curX=x;curY=y;}
+      continue;
+    }
+
+    // "(texto) Tj"
+    if(l.endsWith(') Tj')&&l.startsWith('(')){
+      const inner=l.slice(1,l.length-4);
+      const text=decodePDFStr(inner);
+      if(text.trim()) fragments.push({x:curX,y:curY,text:text.trim()});
+      continue;
+    }
+
+    // "[(texto) num] TJ"
+    if(l.endsWith('] TJ')||l.endsWith(']TJ')){
+      const inner=l.slice(1,l.lastIndexOf(']'));
+      const pRe=/\(([^)]*)\)/g;
+      let pm;const parts=[];
+      while((pm=pRe.exec(inner))!==null) parts.push(decodePDFStr(pm[1]));
+      const text=parts.join('').trim();
+      if(text) fragments.push({x:curX,y:curY,text});
+      continue;
+    }
+  }
+}
+
+function decodePDFStr(s){
+  // Converte escapes octais \057 -> '/' etc
+  let result='';
+  let i=0;
+  while(i<s.length){
+    if(s[i]==='\\' && i+1<s.length){
+      if(s[i+1]>='0'&&s[i+1]<='7'&&i+3<s.length){
+        result+=String.fromCharCode(parseInt(s.slice(i+1,i+4),8));
+        i+=4;
+      } else if(s[i+1]==='n'){result+=' ';i+=2;}
+      else if(s[i+1]==='r'){result+=' ';i+=2;}
+      else if(s[i+1]==='t'){result+=' ';i+=2;}
+      else if(s[i+1]==='\\'){result+='\\';i+=2;}
+      else if(s[i+1]==='('){result+='(';i+=2;}
+      else if(s[i+1]===')'){result+=')';i+=2;}
+      else{result+=s[i+1];i+=2;}
+    } else {
+      result+=s[i];i++;
+    }
+  }
+  return result.trim();
+}
+
+async function decompressZlib(data){
+  const modes=['deflate-raw','deflate'];
+  const slices=data[0]===0x78?[data.slice(2),data]:[data];
   for(const mode of modes){
     for(const slice of slices){
       try{
-        const blob = new Blob([slice]);
-        const ds = new DecompressionStream(mode);
-        const stream = blob.stream().pipeThrough(ds);
-        const reader = stream.getReader();
-        const chunks = []; let totalLen = 0;
+        const blob=new Blob([slice]);
+        const ds=new DecompressionStream(mode);
+        const stream=blob.stream().pipeThrough(ds);
+        const reader=stream.getReader();
+        const chunks=[];let total=0;
         try{
           while(true){
-            const {done,value} = await reader.read();
-            if(done) break;
-            chunks.push(value); totalLen += value.length;
-            if(totalLen > 3000000) break;
+            const{done,value}=await reader.read();
+            if(done)break;
+            chunks.push(value);total+=value.length;
+            if(total>3000000)break;
           }
-        }catch(_){} // ignora junk after end
-        if(!chunks.length) continue;
-        const out = new Uint8Array(totalLen);
-        let off = 0;
-        for(const c of chunks){ out.set(c,off); off+=c.length; }
-        let text = '';
-        for(let i=0;i<out.length;i++) text += String.fromCharCode(out[i]);
-        if(text.length > 20) return text;
-      }catch(_){ continue; }
+        }catch(_){}
+        if(!chunks.length)continue;
+        const out=new Uint8Array(total);
+        let off=0;for(const c of chunks){out.set(c,off);off+=c.length;}
+        let text='';for(let i=0;i<out.length;i++)text+=String.fromCharCode(out[i]);
+        if(text.length>20)return text;
+      }catch(_){continue;}
     }
   }
   return null;
 }
 
-// Extrai linhas de texto de um stream PDF descomprimido
-function extractTextFromStream(streamText) {
-  const lines = [];
-  
-  // Strings Tj simples: (texto)Tj
-  const tjRe = /\(([^)]{1,300})\)\s*Tj/g;
-  let tm;
-  while((tm = tjRe.exec(streamText)) !== null) {
-    const s = decodePDFString(tm[1]);
-    if(s.trim().length > 0) lines.push(s.trim());
-  }
-  
-  // Arrays TJ: [(texto) spacing (texto)]TJ
-  const arrRe = /\[([^\]]{1,1000})\]\s*TJ/g;
-  let am;
-  while((am = arrRe.exec(streamText)) !== null) {
-    const inner = am[1];
-    const pRe2 = /\(([^)]{1,200})\)/g;
-    let pm; const parts = [];
-    while((pm = pRe2.exec(inner)) !== null) parts.push(decodePDFString(pm[1]));
-    const combined = parts.join('').trim();
-    if(combined.length > 0) lines.push(combined);
-  }
-  
-  return lines.length ? lines : null;
-}
 
-// Descodifica string PDF (escapes e caracteres especiais)
-function decodePDFString(s) {
-  return s
-    .replace(/\\n/g, ' ').replace(/\\r/g, ' ').replace(/\\t/g, ' ')
-    .replace(/\\\\/g, '\\').replace(/\\\(/g, '(').replace(/\\\)/g, ')')
-    .replace(/\\([0-7]{3})/g, (_, oct) => String.fromCharCode(parseInt(oct, 8)));
-}
-
-
-// ══════════════════════════════════════════════════════
-// PARSER LOCAL — Faturas Continente, Makro, Metro, Recheio
-// ══════════════════════════════════════════════════════
 
 function parseInvoiceText(text, filename) {
   if(!text||text.trim().length<20) return null;
@@ -11697,6 +11712,7 @@ function extractContinenteItems(lines) {
   const items = [];
   let i = 0;
 
+  console.log('extractContinenteItems: a analisar '+lines.length+' linhas');
   while(i < lines.length) {
     const l = lines[i];
 
