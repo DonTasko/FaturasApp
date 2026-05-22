@@ -11488,75 +11488,86 @@ function fileToDataUrl(file){
 // Usa DecompressionStream nativo do browser para descomprimir streams PDF
 
 
+
 async function extractPDFText(file){
   return new Promise(resolve=>{
     const reader=new FileReader();
     reader.onload=async e=>{
       try{
         const bytes=new Uint8Array(e.target.result);
-        const text=await parsePDFBytes(bytes);
-        resolve(text);
-      }catch(err){console.warn('PDF parse:',err);resolve('');}
+        let raw='';
+        for(let i=0;i<bytes.length;i++) raw+=String.fromCharCode(bytes[i]);
+
+        // Tenta descomprimir streams FlateDecode
+        const fragments=[];
+        let si=0;
+        while(true){
+          const sPos=raw.indexOf('stream',si);
+          if(sPos<0)break;
+          const before=raw.substring(Math.max(0,sPos-300),sPos);
+          if(before.indexOf('FlateDecode')<0){si=sPos+6;continue;}
+          // dataStart: após 'stream' + CRLF/LF
+          let dataStart=sPos+6;
+          while(dataStart<raw.length&&(raw[dataStart]==='\r'||raw[dataStart]==='\n')) dataStart++;
+          const ePos=raw.indexOf('endstream',dataStart);
+          if(ePos<0||ePos-dataStart>400000){si=sPos+6;continue;}
+          try{
+            const data=bytes.slice(dataStart,ePos);
+            const text=await decompressZlib(data);
+            if(text&&text.length>10) parseStreamFragments(text,fragments);
+          }catch(_){}
+          si=ePos+9;
+        }
+
+        // Texto não comprimido (Tj directo no raw)
+        parseStreamFragments(raw,fragments);
+
+        // Se não encontrou nada via coordenadas, tenta extracção simples de Tj
+        if(!fragments.length){
+          const lines=[];
+          const tjRe=/\(([^)]{1,300})\)\s*Tj/g;
+          let m;
+          while((m=tjRe.exec(raw))!==null){
+            const s=decodePDFStr(m[1]);
+            if(s.trim().length>0) lines.push(s.trim());
+          }
+          const arrRe=/\[([^\]]{1,500})\]\s*TJ/g;
+          while((m=arrRe.exec(raw))!==null){
+            const pRe2=/\(([^)]{1,200})\)/g;
+            let pm;const parts=[];
+            while((pm=pRe2.exec(m[1]))!==null) parts.push(decodePDFStr(pm[1]));
+            const t=parts.join('').trim();
+            if(t) lines.push(t);
+          }
+          console.log('PDF extracção simples: '+lines.length+' linhas');
+          resolve(lines.join('\n'));
+          return;
+        }
+
+        // Reconstrói por coordenadas Y
+        fragments.sort((a,b)=>b.y-a.y||a.x-b.x);
+        const groups=[];let cur=null;
+        for(const f of fragments){
+          if(!f.text.trim())continue;
+          if(!cur||Math.abs(cur.y-f.y)>4){cur={y:f.y,frags:[f]};groups.push(cur);}
+          else cur.frags.push(f);
+        }
+        const lines=groups.map(g=>{
+          g.frags.sort((a,b)=>a.x-b.x);
+          return g.frags.map(f=>f.text).join(' ').trim();
+        }).filter(l=>l.length>0);
+
+        console.log('PDF reconstruido por Y: '+lines.length+' linhas');
+        lines.slice(0,50).forEach((l,i)=>console.log(i+': '+l));
+        resolve(lines.join('\n'));
+      }catch(err){
+        console.warn('PDF parse error:',err);
+        resolve('');
+      }
     };
     reader.onerror=()=>resolve('');
     reader.readAsArrayBuffer(file);
   });
-}
-
-async function parsePDFBytes(bytes){
-  let raw='';
-  for(let i=0;i<Math.min(bytes.length,600000);i++) raw+=String.fromCharCode(bytes[i]);
-
-  const fragments=[];
-
-  // Descomprime streams FlateDecode
-  const sTag='stream\n';
-  let pos=0;
-  while(true){
-    let si=raw.indexOf('stream\n',pos);
-    if(si<0){si=raw.indexOf('stream\r\n',pos);}
-    if(si<0) break;
-    const start=raw.indexOf('\n',si)+1;
-    const end=raw.indexOf('endstream',start);
-    if(end<0||end-start>300000){pos=si+7;continue;}
-    const hdr=raw.substring(Math.max(0,si-400),si);
-    if(hdr.indexOf('FlateDecode')>=0){
-      try{
-        const data=bytes.slice(start,end);
-        const text=await decompressZlib(data);
-        if(text&&text.length>10) parseStreamFragments(text,fragments);
-      }catch(_){}
-    }
-    pos=end+9;
-  }
-
-  // Texto não comprimido
-  parseStreamFragments(raw,fragments);
-
-  if(!fragments.length) return '';
-
-  // Agrupa por Y (±4 unidades = mesma linha)
-  fragments.sort((a,b)=>b.y-a.y||a.x-b.x);
-  const groups=[];
-  let cur=null;
-  for(const f of fragments){
-    if(!f.text.trim()) continue;
-    if(!cur||Math.abs(cur.y-f.y)>4){
-      cur={y:f.y,frags:[f]};
-      groups.push(cur);
-    } else {
-      cur.frags.push(f);
-    }
-  }
-
-  const lines=groups.map(g=>{
-    g.frags.sort((a,b)=>a.x-b.x);
-    return g.frags.map(f=>f.text).join(' ').trim();
-  }).filter(l=>l.length>0);
-
-  console.log('PDF reconstruido: '+lines.length+' linhas');
-  lines.slice(0,50).forEach((l,i)=>console.log(i+': '+l));
-  return lines.join('\n');
 }
 
 function parseStreamFragments(stream,fragments){
@@ -11564,56 +11575,43 @@ function parseStreamFragments(stream,fragments){
   const lines=stream.split('\n');
   for(let i=0;i<lines.length;i++){
     const l=lines[i].trim();
-    if(!l) continue;
-
-    // Posicao: "x y Td"
+    if(!l)continue;
     const sp=l.split(' ');
     if(sp.length===3&&sp[2]==='Td'){
       const x=parseFloat(sp[0]),y=parseFloat(sp[1]);
       if(!isNaN(x)&&!isNaN(y)){curX=x;curY=y;}
       continue;
     }
-
-    // "(texto) Tj"
     if(l.endsWith(') Tj')&&l.startsWith('(')){
-      const inner=l.slice(1,l.length-4);
-      const text=decodePDFStr(inner);
-      if(text.trim()) fragments.push({x:curX,y:curY,text:text.trim()});
+      const text=decodePDFStr(l.slice(1,l.length-4));
+      if(text.trim())fragments.push({x:curX,y:curY,text:text.trim()});
       continue;
     }
-
-    // "[(texto) num] TJ"
     if(l.endsWith('] TJ')||l.endsWith(']TJ')){
       const inner=l.slice(1,l.lastIndexOf(']'));
-      const pRe=/\(([^)]*)\)/g;
-      let pm;const parts=[];
-      while((pm=pRe.exec(inner))!==null) parts.push(decodePDFStr(pm[1]));
+      const pRe=/\(([^)]*)\)/g;let pm;const parts=[];
+      while((pm=pRe.exec(inner))!==null)parts.push(decodePDFStr(pm[1]));
       const text=parts.join('').trim();
-      if(text) fragments.push({x:curX,y:curY,text});
+      if(text)fragments.push({x:curX,y:curY,text});
       continue;
     }
   }
 }
 
 function decodePDFStr(s){
-  // Converte escapes octais \057 -> '/' etc
-  let result='';
-  let i=0;
+  let result='',i=0;
   while(i<s.length){
     if(s[i]==='\\' && i+1<s.length){
-      if(s[i+1]>='0'&&s[i+1]<='7'&&i+3<s.length){
-        result+=String.fromCharCode(parseInt(s.slice(i+1,i+4),8));
-        i+=4;
-      } else if(s[i+1]==='n'){result+=' ';i+=2;}
+      if(s[i+1]>='0'&&s[i+1]<='7'&&i+3<=s.length){
+        result+=String.fromCharCode(parseInt(s.slice(i+1,i+4),8));i+=4;
+      }
+      else if(s[i+1]==='n'){result+=' ';i+=2;}
       else if(s[i+1]==='r'){result+=' ';i+=2;}
-      else if(s[i+1]==='t'){result+=' ';i+=2;}
       else if(s[i+1]==='\\'){result+='\\';i+=2;}
       else if(s[i+1]==='('){result+='(';i+=2;}
       else if(s[i+1]===')'){result+=')';i+=2;}
       else{result+=s[i+1];i+=2;}
-    } else {
-      result+=s[i];i++;
-    }
+    }else{result+=s[i];i++;}
   }
   return result.trim();
 }
@@ -11629,17 +11627,10 @@ async function decompressZlib(data){
         const stream=blob.stream().pipeThrough(ds);
         const reader=stream.getReader();
         const chunks=[];let total=0;
-        try{
-          while(true){
-            const{done,value}=await reader.read();
-            if(done)break;
-            chunks.push(value);total+=value.length;
-            if(total>3000000)break;
-          }
-        }catch(_){}
+        try{while(true){const{done,value}=await reader.read();if(done)break;chunks.push(value);total+=value.length;if(total>3000000)break;}}catch(_){}
         if(!chunks.length)continue;
-        const out=new Uint8Array(total);
-        let off=0;for(const c of chunks){out.set(c,off);off+=c.length;}
+        const out=new Uint8Array(total);let off=0;
+        for(const c of chunks){out.set(c,off);off+=c.length;}
         let text='';for(let i=0;i<out.length;i++)text+=String.fromCharCode(out[i]);
         if(text.length>20)return text;
       }catch(_){continue;}
