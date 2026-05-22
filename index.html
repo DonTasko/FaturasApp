@@ -11632,241 +11632,187 @@ function decodePDFString(s) {
 
 
 // ══════════════════════════════════════════════════════
-// PARSER LOCAL DE FATURAS PORTUGUESAS — sem API
-// Reconhece padrões de Makro, Metro, Recheio, etc.
+// PARSER LOCAL — Faturas Continente, Makro, Metro, Recheio
 // ══════════════════════════════════════════════════════
 
 function parseInvoiceText(text, filename) {
-  if(!text || text.trim().length < 20) return null;
-
-  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  if(!text||text.trim().length<20) return null;
+  const lines = text.split('\n').map(l=>l.trim()).filter(l=>l.length>0);
   console.log('Parser: '+lines.length+' linhas');
-  // Log primeiras 20 linhas para debug
-  if(lines.length>0) console.log('Amostra PDF:\n'+lines.slice(0,20).join('\n'));
 
   const result = {
-    supplier: '',
-    nif: '',
-    nifClient: '',
-    num: '',
-    date: '',
-    total: 0,
-    vat: 0,
-    atcud: '',
-    items: [],
-    source: 'local-parse'
+    supplier:'', nif:'', nifClient:'', num:'', date:'',
+    total:0, vat:0, atcud:'', items:[], source:'local-parse'
   };
 
-  // ── Extrai cabeçalho ──
   extractHeader(lines, result);
+  result.items = extractContinenteItems(lines);
 
-  // ── Extrai artigos ──
-  result.items = extractItems(lines);
+  // Fallback para outros formatos se não encontrou artigos
+  if(!result.items.length) result.items = extractGenericItems(lines);
 
-  // ── Se não encontrou artigos com método principal, tenta alternativo ──
-  if(result.items.length === 0) {
-    result.items = extractItemsFallback(lines);
-  }
-
-  console.log(`Parser: ${result.items.length} artigos encontrados`);
+  console.log('Parser: '+result.items.length+' artigos encontrados');
   return result;
 }
 
-// ── Extrai dados do cabeçalho ──
-function extractHeader(lines, result) {
-  for(let i = 0; i < Math.min(lines.length, 60); i++) {
+// ── Cabeçalho ──
+function extractHeader(lines, r) {
+  for(let i=0;i<Math.min(lines.length,80);i++){
     const l = lines[i];
 
-    // NIF (9 dígitos, pode ter prefixo PT)
-    if(!result.nif) {
-      const nifM = l.match(/(?:NIF|NIPC|Contribuinte)[:\s]*(?:PT)?(\d{9})/i)
-                || l.match(/^(?:PT)?(\d{9})$/);
-      if(nifM) result.nif = nifM[1];
+    // NIF
+    const nifM = l.match(/NIF[:\s]*(?:PT)?(\d{9})/i);
+    if(nifM){ if(!r.nif) r.nif=nifM[1]; else if(!r.nifClient&&nifM[1]!==r.nif) r.nifClient=nifM[1]; }
+
+    // Número fatura — "Nro:FT INW006/005619" ou "FT XXXX/XXXXX"
+    if(!r.num){
+      const numM = l.match(/(?:Nro|Nº|No|Fatura)[:\s]*([A-Z]{2}\s*[A-Z0-9]+\/\d+)/i)
+                || l.match(/\b(FT|FR|FS|NC|VD)\s+[A-Z0-9]+\/\d+/i);
+      if(numM) r.num = numM[1]||numM[0];
     }
 
-    // NIF cliente
-    if(!result.nifClient && result.nif) {
-      const nifM = l.match(/(?:NIF|NIPC|Contribuinte)[:\s]*(?:PT)?(\d{9})/i);
-      if(nifM && nifM[1] !== result.nif) result.nifClient = nifM[1];
-    }
-
-    // Número de fatura
-    if(!result.num) {
-      const numM = l.match(/(?:Fatura|Factura|Invoice|FT|FR|FS|NC)\s*[:\s\/]?\s*([A-Z0-9\/\-]{3,20})/i)
-                || l.match(/N[oº°]\s*[:\s]?\s*([A-Z0-9\/\-]{4,20})/i);
-      if(numM) result.num = numM[1].trim();
-    }
-
-    // Data (vários formatos)
-    if(!result.date) {
-      const dtM = l.match(/(\d{2})[\/\-\.](\d{2})[\/\-\.](\d{4})/)
-               || l.match(/(\d{4})[\/\-\.](\d{2})[\/\-\.](\d{2})/);
-      if(dtM) {
-        if(dtM[3] && dtM[3].length === 4) {
-          result.date = `${dtM[3]}-${dtM[2].padStart(2,'0')}-${dtM[1].padStart(2,'0')}`;
-        } else {
-          result.date = `${dtM[1]}-${dtM[2].padStart(2,'0')}-${dtM[3].padStart(2,'0')}`;
-        }
-      }
+    // Data — "20/05/2026" ou "20-05-2026"
+    if(!r.date){
+      const dtM = l.match(/(\d{2})[\/\-\.](\d{2})[\/\-\.](\d{4})/);
+      if(dtM) r.date = dtM[3]+'-'+dtM[2]+'-'+dtM[1];
     }
 
     // Total
-    const totalM = l.match(/(?:Total\s*Geral|Total\s*a\s*Pagar|TOTAL)[:\s]*([0-9]+[.,][0-9]{2})/i);
-    if(totalM) result.total = parseFloat(totalM[1].replace(',','.'));
-
-    // IVA
-    const vatM = l.match(/(?:IVA|VAT|Taxa)[:\s]*([0-9]+[.,][0-9]{2})/i);
-    if(vatM && !result.vat) result.vat = parseFloat(vatM[1].replace(',','.'));
+    const totM = l.match(/TOTAL\s*A\s*PAGAR\s+(\d+[.,]\d{2})/i)
+              || l.match(/^TOTAL\s+(\d+[.,]\d{2})/i);
+    if(totM) r.total = pn(totM[1]);
 
     // ATCUD
-    const atcudM = l.match(/ATCUD[:\s]*([A-Z0-9\-]+)/i);
-    if(atcudM) result.atcud = atcudM[1];
+    const atM = l.match(/ATCUD[:\s]*([A-Z0-9\-]+)/i);
+    if(atM) r.atcud = atM[1];
 
-    // Nome do fornecedor (primeiras linhas com texto alfabético longo)
-    if(!result.supplier && i < 10) {
-      if(l.length > 5 && /[A-Za-záàâãéêíóôõúüç]{4,}/.test(l) && !/^\d/.test(l)) {
-        result.supplier = l.replace(/\s+/g,' ').trim();
-      }
-    }
+    // Fornecedor — primeiras linhas com texto
+    if(!r.supplier&&i<5&&l.length>4&&/[A-Za-z]{3}/.test(l)&&!/^NIF/i.test(l))
+      r.supplier = l;
   }
 }
 
-// ── Método principal: detecta linhas de artigos por padrões de preço ──
-function extractItems(lines) {
+// ── Parser Continente: padrão (A/B/C) NOME   preço ──
+function extractContinenteItems(lines) {
   const items = [];
-  const seen = new Set();
+  let i = 0;
 
-  // Padrões de linha de artigo em faturas portuguesas:
-  // Descrição   Qtd   Unidade   Preço Unit   Total
-  // Ex: "Frango Inteiro   2   KG   1,50   3,00"
-  // Ex: "5601234567890   Azeite V. Extra 750ml   6 UN   3,99   23,94"
-
-  // Detecta zona de artigos (depois de "Descrição", "Artigo", "Produto")
-  let inItemsZone = false;
-  let headerLine = -1;
-
-  for(let i = 0; i < lines.length; i++) {
+  while(i < lines.length) {
     const l = lines[i];
 
-    // Detecta cabeçalho da tabela de artigos
-    if(/(?:Descri[çc][aã]o|Artigo|Produto|Refer[eê]ncia)/i.test(l) &&
-       /(?:Qtd|Quant|Un\.?|Pre[çc]o|Valor)/i.test(l)) {
-      inItemsZone = true;
-      headerLine = i;
+    // Linha de artigo Continente: "(A) NOME DO PRODUTO   1,23"
+    // ou "(C) NOME SEM PRECO" seguido de "QTD X preco   total"
+    const artM = l.match(/^\(([ABCNS])\)\s+(.+?)(?:\s+(\d+[.,]\d{2}))?$/);
+
+    if(artM) {
+      const vatCode = artM[1];
+      let name = artM[2].trim();
+      let priceOnLine = artM[3] ? pn(artM[3]) : 0;
+
+      // Ignora linhas de poupança/desconto
+      if(/^POUCAN|^DESCONTO|^IVA Nao/i.test(name)) { i++; continue; }
+      // Ignora depósito de taras
+      if(/DEPOSITO|TARA/i.test(name)) { i++; continue; }
+
+      let qty = 1, unitPrice = 0, totalPrice = 0;
+      let unit = 'un';
+
+      // Verifica se a linha seguinte tem "QTD X preço   total"
+      // Padrão: "6 X 0,89 5,34" ou "2 X 1,79 3,58" ou "0,510 X 2,99 1,52"
+      const nextLine = i+1 < lines.length ? lines[i+1].trim() : '';
+      const qtyM = nextLine.match(/^(\d+[.,]?\d*)\s*[Xx]\s*(\d+[.,]\d{2})\s+(\d+[.,]\d{2})$/);
+
+      if(qtyM) {
+        qty = pn(qtyM[1]);
+        unitPrice = pn(qtyM[2]);
+        totalPrice = pn(qtyM[3]);
+        i += 2; // salta linha de quantidade
+      } else {
+        // Preço na mesma linha
+        totalPrice = priceOnLine;
+        unitPrice = priceOnLine;
+        qty = 1;
+        i++;
+      }
+
+      // Detecta quantidade em kg na descrição: "0,510 X 2,99 1,52"
+      if(name.match(/KG$/i)) unit = 'kg';
+      else if(name.match(/\d+[LM][LS]$/i)||name.match(/\d+L$/i)) unit = 'lt';
+      else if(name.match(/\d+G$/i)) unit = 'g';
+
+      // Limpa nome
+      name = name.replace(/\s+/g,' ').trim();
+      // Remove sufixos de peso do final do nome se já estão no unit
+      // Mantém o nome completo para melhor reconhecimento
+
+      if(!name||totalPrice<=0) continue;
+
+      items.push({
+        id: uid(),
+        name: name.slice(0,80),
+        qty: Math.round(qty*1000)/1000,
+        unit,
+        unitPrice: Math.round(unitPrice*100)/100,
+        totalPrice: Math.round(totalPrice*100)/100,
+        vatRate: vatCodeToRate(vatCode),
+        famId: ''
+      });
       continue;
     }
 
-    // Para de procurar artigos nas linhas de total/rodapé
-    if(inItemsZone && /(?:^Total|^Subtotal|^IVA|^Desconto|Obrigado|Assinatura)/i.test(l)) {
-      if(items.length > 0) inItemsZone = false;
-    }
-
-    if(!inItemsZone && headerLine < 0) {
-      // Tenta detectar linhas de artigos mesmo sem zona definida
-      const item = parseItemLine(l, lines, i);
-      if(item && !seen.has(item.name.toLowerCase())) {
-        seen.add(item.name.toLowerCase());
-        items.push(item);
-      }
-    } else if(inItemsZone) {
-      const item = parseItemLine(l, lines, i);
-      if(item && !seen.has(item.name.toLowerCase())) {
-        seen.add(item.name.toLowerCase());
-        items.push(item);
-      }
-    }
+    i++;
   }
 
   return items;
 }
 
-// ── Tenta reconhecer uma linha como artigo ──
-function parseItemLine(line, lines, idx) {
-  if(!line || line.length < 5) return null;
-
-  // Ignora linhas que são claramente cabeçalho ou rodapé
-  if(/^(?:Total|Subtotal|IVA|Desconto|Data|Fatura|NIF|IBAN|Pag|Obs|Tel|Email|Rua|CP|Lx|Lisboa)/i.test(line)) return null;
-  if(/^\d{4}-\d{2}-\d{2}$/.test(line)) return null; // só data
-  if(line.length > 120) return null; // linha demasiado longa
-
-  // Padrão 1: linha com quantidade e preço no final
-  // "Frango Inteiro Kg  2,500  1,89  4,73"
-  const p1 = line.match(/^(.{3,50}?)\s+(\d+[.,]\d{1,3})\s+(\d+[.,]\d{2})\s+(\d+[.,]\d{2})\s*$/);
-  if(p1) {
-    const name = cleanName(p1[1]);
-    const qty  = parseNum(p1[2]);
-    const up   = parseNum(p1[3]);
-    const tp   = parseNum(p1[4]);
-    if(name && qty > 0 && up > 0 && tp > 0 && isReasonablePrice(up, tp, qty)) {
-      return buildItem(name, qty, up, tp, line);
-    }
-  }
-
-  // Padrão 2: "Descrição  Qtd  UN  PU  Total" (típico Makro/Metro)
-  const p2 = line.match(/^(.{3,50}?)\s+(\d+[.,]?\d*)\s+(?:KG|UN|LT|CX|PC|kg|un|lt|cx)\s+(\d+[.,]\d{2})\s+(\d+[.,]\d{2})\s*$/i);
-  if(p2) {
-    const name = cleanName(p2[1]);
-    const qty  = parseNum(p2[2]);
-    const up   = parseNum(p2[3]);
-    const tp   = parseNum(p2[4]);
-    const unit = line.match(/\b(KG|UN|LT|CX|PC|kg|un|lt|cx)\b/i)?.[0]?.toLowerCase()||'un';
-    if(name && qty > 0 && up > 0) {
-      return buildItem(name, qty, up, tp||qty*up, line, unit);
-    }
-  }
-
-  // Padrão 3: EAN + Descrição + valores
-  // "5601234567890  Azeite 750ml  6  3,99  23,94"
-  const p3 = line.match(/^\d{8,14}\s+(.{3,50}?)\s+(\d+[.,]?\d*)\s+(\d+[.,]\d{2})\s+(\d+[.,]\d{2})\s*$/);
-  if(p3) {
-    const name = cleanName(p3[1]);
-    const qty  = parseNum(p3[2]);
-    const up   = parseNum(p3[3]);
-    const tp   = parseNum(p3[4]);
-    if(name && qty > 0 && up > 0 && isReasonablePrice(up, tp, qty)) {
-      return buildItem(name, qty, up, tp, line);
-    }
-  }
-
-  // Padrão 4: referência + descrição na linha seguinte + preços espalhados
-  // Tenta juntar linhas consecutivas
-  if(idx < lines.length - 2) {
-    const combined = line + ' ' + lines[idx+1];
-    const p4 = combined.match(/^(.{5,60}?)\s+(\d+[.,]?\d*)\s+(\d+[.,]\d{2})\s+(\d+[.,]\d{2})\s*$/);
-    if(p4) {
-      const name = cleanName(p4[1]);
-      const qty  = parseNum(p4[2]);
-      const up   = parseNum(p4[3]);
-      const tp   = parseNum(p4[4]);
-      if(name && qty > 0 && up > 0 && isReasonablePrice(up, tp, qty)) {
-        return buildItem(name, qty, up, tp, combined);
-      }
-    }
-  }
-
-  return null;
-}
-
-// ── Fallback: procura qualquer linha com nome + dois preços ──
-function extractItemsFallback(lines) {
+// ── Parser genérico para outros fornecedores ──
+function extractGenericItems(lines) {
   const items = [];
   const seen = new Set();
 
-  for(let i = 0; i < lines.length; i++) {
+  for(let i=0; i<lines.length; i++){
     const l = lines[i];
-    // Pelo menos uma palavra de 3+ letras + dois números que parecem preços
-    const prices = [...l.matchAll(/(\d+[.,]\d{2})/g)].map(m => parseNum(m[1]));
-    if(prices.length >= 2) {
-      const nameM = l.match(/^([A-Za-záàâãéêíóôõúüç][A-Za-záàâãéêíóôõúüç\s\.\-\/]{2,40})/);
-      if(nameM) {
-        const name = cleanName(nameM[1]);
-        if(!name || seen.has(name.toLowerCase())) continue;
-        if(isStopWord(name)) continue;
-        const up = prices[prices.length-2];
-        const tp = prices[prices.length-1];
-        if(up > 0 && tp > 0 && tp >= up * 0.5 && tp <= up * 100) {
-          seen.add(name.toLowerCase());
-          items.push(buildItem(name, Math.round(tp/up*10)/10||1, up, tp, l));
+
+    // Padrão: Descrição   Qtd   PU   Total (4 colunas numéricas)
+    const p1 = l.match(/^(.{4,50}?)\s{2,}(\d+[.,]?\d*)\s+(\d+[.,]\d{2})\s+(\d+[.,]\d{2})\s*$/);
+    if(p1){
+      const name=cleanName(p1[1]);
+      const qty=pn(p1[2]),up=pn(p1[3]),tp=pn(p1[4]);
+      if(name&&qty>0&&up>0&&!seen.has(name)&&isValidTotal(qty,up,tp)){
+        seen.add(name);
+        const unitM=l.match(/\b(kg|kgs|lt|lts|un|und|cx|g)\b/i);
+        items.push({id:uid(),name:name.slice(0,80),qty,unit:unitM?unitM[1].toLowerCase():'un',
+          unitPrice:up,totalPrice:tp,vatRate:guessVatRate(name),famId:''});
+        continue;
+      }
+    }
+
+    // Padrão EAN + Descrição + valores
+    const p2 = l.match(/^\d{8,14}\s+(.{4,50}?)\s+(\d+[.,]?\d*)\s+(\d+[.,]\d{2})\s+(\d+[.,]\d{2})\s*$/);
+    if(p2){
+      const name=cleanName(p2[1]);
+      const qty=pn(p2[2]),up=pn(p2[3]),tp=pn(p2[4]);
+      if(name&&qty>0&&up>0&&!seen.has(name)){
+        seen.add(name);
+        items.push({id:uid(),name:name.slice(0,80),qty,unit:'un',
+          unitPrice:up,totalPrice:tp,vatRate:guessVatRate(name),famId:''});
+      }
+    }
+
+    // Padrão QTD X PU = Total na linha seguinte à descrição
+    if(i>0){
+      const qM = l.match(/^(\d+[.,]?\d*)\s*[Xx]\s*(\d+[.,]\d{2})\s+(\d+[.,]\d{2})$/);
+      if(qM){
+        const prevName = cleanName(lines[i-1]);
+        if(prevName&&prevName.length>3&&!seen.has(prevName)&&
+           !/^POUCAN|^DESCONTO|^\(/i.test(prevName)){
+          const qty=pn(qM[1]),up=pn(qM[2]),tp=pn(qM[3]);
+          if(qty>0&&up>0){
+            seen.add(prevName);
+            items.push({id:uid(),name:prevName.slice(0,80),qty,unit:'un',
+              unitPrice:up,totalPrice:tp,vatRate:guessVatRate(prevName),famId:''});
+          }
         }
       }
     }
@@ -11875,59 +11821,23 @@ function extractItemsFallback(lines) {
 }
 
 // ── Utilidades ──
-function parseNum(s) {
-  if(!s) return 0;
-  return parseFloat(s.replace(/\./g,'').replace(',','.')) || 0;
+function pn(s){ return parseFloat((s||'0').replace(/\./g,'').replace(',','.'))||0; }
+function cleanName(s){
+  return (s||'').replace(/^\(.\)\s*/,'').replace(/\s+/g,' ')
+    .replace(/[,\.]+$/,'').replace(/^\d+\s*/,'').trim();
 }
-
-function cleanName(s) {
-  if(!s) return '';
-  return s.replace(/^\d{4,}\s*/, '') // remove ref numérica no início
-          .replace(/\s+/g,' ').trim()
-          .replace(/[,\.]+$/, '');
+function isValidTotal(qty,up,tp){
+  const calc=qty*up;
+  return tp>0&&Math.abs(calc-tp)/tp<0.20;
 }
-
-function isStopWord(name) {
-  const stops = /^(total|iva|desconto|subtotal|pagar|data|fatura|factura|obrigado|assinatura|entrega|obs|nota|ref|pag)/i;
-  return stops.test(name.trim());
+function vatCodeToRate(code){
+  // Continente: (A)=6%, (B)=13%, (C)=23%, (NS)=0%
+  return code==='A'?6:code==='B'?13:code==='C'?23:0;
 }
-
-function isReasonablePrice(up, tp, qty) {
-  if(up <= 0 || tp <= 0) return false;
-  const calc = up * qty;
-  const diff = Math.abs(calc - tp) / tp;
-  return diff < 0.15; // tolerância 15% para arredondamentos
-}
-
-function buildItem(name, qty, unitPrice, totalPrice, rawLine, unit) {
-  // Detecta unidade na linha
-  const unitM = rawLine?.match(/\b(kg|kgs|lt|lts|un|und|cx|caixa|pc|pcs|gr|g|ml|dl|l)\b/i);
-  const u = unit || (unitM ? unitM[1].toLowerCase() : 'un');
-  // Normaliza unidades
-  const unitMap = {kgs:'kg',lts:'lt',und:'un',pcs:'un',caixa:'cx',gr:'g',dl:'lt',ml:'lt'};
-
-  // Detecta taxa IVA típica por categoria de produto
-  const vatRate = guessVatRate(name);
-
-  return {
-    id: uid(),
-    name: name.slice(0,80),
-    qty: Math.round(qty * 1000) / 1000,
-    unit: unitMap[u] || u,
-    unitPrice: Math.round(unitPrice * 100) / 100,
-    totalPrice: Math.round(totalPrice * 100) / 100,
-    vatRate,
-    famId: ''
-  };
-}
-
-function guessVatRate(name) {
-  const n = name.toLowerCase();
-  // 6% — alimentares básicos
-  if(/(?:pão|leite|ovo|frango|carne|peixe|fruta|legume|vegetal|azeite|arroz|massa|farinha|açúcar|sal|manteiga|queijo|iogurte|bacalhau|atum|sardinha|salmão|fiambre|presunto|linguiça|chouriço|morcela|cenoura|batata|cebola|alho|tomate|laranja|maçã|banana|limão|uva|pera|melão)/i.test(n)) return 6;
-  // 13% — refeições, vinho
-  if(/(?:vinho|cerveja|refrigerante|sumo|água|bebida|café|chá)/i.test(n)) return 13;
-  // 23% — outros
+function guessVatRate(name){
+  const n=name.toLowerCase();
+  if(/(?:pão|leite|ovo|frango|carne|peixe|fruta|legume|azeite|arroz|massa|farinha|açúcar|sal|manteiga|queijo|iogurte|bacalhau|atum|sardinha|salmão|fiambre|presunto|chouriço|cenoura|batata|cebola|alho|tomate|laranja|maçã|banana|limão|morango|espinafre|nata|requeijão)/i.test(n)) return 6;
+  if(/(?:vinho|cerveja|refrigerante|sumo|água|agua|bebida|café|chá|porto|sidra)/i.test(n)) return 13;
   return 23;
 }
 
