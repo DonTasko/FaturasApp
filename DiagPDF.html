@@ -3,17 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Diagnóstico PDF</title>
+<title>Diagnóstico PDF v3</title>
 <style>
 body{background:#0A0A0A;color:#F0F0E8;font-family:monospace;padding:16px;max-width:700px;margin:0 auto}
-h1{color:#CBFF4D;font-size:18px;margin-bottom:16px}
-button{background:#CBFF4D;color:#000;border:none;padding:12px 20px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;width:100%;margin-bottom:12px}
+h1{color:#CBFF4D;font-size:18px;margin-bottom:8px}
+p{font-size:12px;color:#888;margin-bottom:12px}
+button{background:#CBFF4D;color:#000;border:none;padding:12px 20px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;width:100%;margin-bottom:8px}
 #output{background:#111;border:1px solid #2A2A2A;border-radius:8px;padding:12px;white-space:pre-wrap;font-size:11px;max-height:80vh;overflow-y:auto;line-height:1.6}
 .ok{color:#CBFF4D}.err{color:#F87171}.info{color:#60A5FA}.warn{color:#FFB84D}
 </style>
 </head>
 <body>
-<h1>🔍 Diagnóstico PDF v2</h1>
+<h1>🔍 Diagnóstico PDF v3</h1>
+<p>Lê o texto bruto do PDF sem descompressão</p>
 <button onclick="pickFile()">Seleccionar PDF</button>
 <div id="output">Aguarda ficheiro...</div>
 <script>
@@ -33,147 +35,132 @@ function pickFile(){
 async function readPDF(file){
   const reader=new FileReader();
   reader.onload=async e=>{
-    try{
-      const bytes=new Uint8Array(e.target.result);
-      log('info','Bytes: '+bytes.length);
-      const text=await parsePDFBytes(bytes);
-      const lines=text.split('\n').filter(l=>l.trim());
-      log('ok','TOTAL LINHAS RECONSTRUÍDAS: '+lines.length);
-      log('ok','');
-      log('ok','=== PRIMEIRAS 80 LINHAS ===');
-      lines.slice(0,80).forEach((l,i)=>{
-        const clean=l.trim();
-        const isArt=/^\([ABCNS]\)\s/.test(clean);
-        log(isArt?'warn':'ok',i.toString().padStart(3)+': '+clean);
-      });
-      log('ok','');
-      const artLines=lines.filter(l=>/^\([ABCNS]\)\s/.test(l.trim()));
-      log('info','Linhas com padrão (A/B/C): '+artLines.length);
-      if(artLines.length){
-        log('warn','Exemplos de artigos:');
-        artLines.slice(0,10).forEach(l=>log('warn','  '+l.trim()));
-      } else {
-        log('err','⚠ Padrão (A/B/C) NÃO encontrado!');
-        log('err','Mostrando linhas que contêm preços (X,XX):');
-        lines.filter(l=>/\d,\d\d/.test(l)).slice(0,20).forEach(l=>log('err','  '+l.trim()));
+    const bytes=new Uint8Array(e.target.result);
+    log('info','Bytes: '+bytes.length);
+
+    // Converte para string
+    let raw='';
+    for(let i=0;i<bytes.length;i++) raw+=String.fromCharCode(bytes[i]);
+
+    // Conta estruturas
+    const nStreams=(raw.match(/\bstream\b/g)||[]).length;
+    const nFlate=(raw.match(/FlateDecode/g)||[]).length;
+    const nBT=(raw.match(/\bBT\b/g)||[]).length;
+    const nTj=(raw.match(/\bTj\b/g)||[]).length;
+    log('info','stream: '+nStreams+' | FlateDecode: '+nFlate+' | BT: '+nBT+' | Tj: '+nTj);
+
+    // Tenta descomprimir todos os streams FlateDecode
+    log('info','A descomprimir streams...');
+    const allText=[];
+    let si=0;
+    let found=0;
+    while(true){
+      // Encontra próximo stream
+      const sPos=raw.indexOf('stream',si);
+      if(sPos<0)break;
+      // Verifica se é FlateDecode
+      const before=raw.substring(Math.max(0,sPos-300),sPos);
+      const isFlate=before.indexOf('FlateDecode')>=0;
+      // Encontra fim do 'stream' keyword e início dos dados
+      let dataStart=sPos+6;
+      while(dataStart<raw.length&&(raw[dataStart]==='\r'||raw[dataStart]==='\n')) dataStart++;
+      // Encontra endstream
+      const ePos=raw.indexOf('endstream',dataStart);
+      if(ePos<0){si=sPos+6;continue;}
+      const dataLen=ePos-dataStart;
+      if(dataLen>0&&dataLen<500000&&isFlate){
+        found++;
+        try{
+          const data=bytes.slice(dataStart,ePos);
+          log('info','Stream #'+found+' a descomprimir ('+dataLen+' bytes)...');
+          const text=await decompress(data);
+          if(text&&text.length>10){
+            log('ok','Stream #'+found+' OK: '+text.length+' chars');
+            allText.push(text);
+            // Mostra primeiros 200 chars
+            log('warn','  Preview: '+text.slice(0,200).replace(/\n/g,' ↵ '));
+          } else {
+            log('err','Stream #'+found+' falhou descompressão');
+          }
+        }catch(e2){log('err','Stream #'+found+' erro: '+e2.message);}
       }
-    }catch(e){log('err','Erro: '+e.message);}
+      si=ePos+9;
+    }
+
+    log('info','Streams FlateDecode encontrados: '+found);
+    log('info','Streams descomprimidos com sucesso: '+allText.length);
+
+    if(allText.length===0){
+      log('err','Nenhum stream descomprimido!');
+      // Tenta extrair texto plano
+      log('info','A tentar extracção de texto plano...');
+      const tjMatches=[...raw.matchAll(/\(([^\)]{1,200})\)\s*Tj/g)];
+      log('info','Strings Tj encontradas: '+tjMatches.length);
+      tjMatches.slice(0,30).forEach((m,i)=>log('warn',i+': '+m[1]));
+      return;
+    }
+
+    // Junta todo o texto descomprimido
+    const combined=allText.join('\n');
+    const lines=combined.split('\n').map(l=>l.trim()).filter(l=>l.length>0);
+    log('ok','');
+    log('ok','TOTAL LINHAS: '+lines.length);
+    log('ok','=== PRIMEIRAS 100 LINHAS ===');
+    lines.slice(0,100).forEach((l,i)=>{
+      const isArt=/^\([ABCNS]\)\s/.test(l)||/\bTj\b|\bTJ\b/.test(l)||(l.length>2&&l.length<200);
+      log('warn',i.toString().padStart(3)+': '+l.slice(0,120));
+    });
+
+    // Verifica padrão Continente
+    const artLines=lines.filter(l=>/^\([ABCNS]\)\s/.test(l));
+    log('info','');
+    log('info','Linhas (A/B/C): '+artLines.length);
+    artLines.slice(0,5).forEach(l=>log('ok','  '+l));
+
+    // Verifica padrão Tj
+    const tjLines=lines.filter(l=>l.includes(') Tj')||l.includes(')Tj'));
+    log('info','Linhas com Tj: '+tjLines.length);
+    tjLines.slice(0,10).forEach(l=>log('ok','  '+l));
   };
   reader.readAsArrayBuffer(file);
 }
 
-async function parsePDFBytes(bytes){
-  let raw='';
-  for(let i=0;i<Math.min(bytes.length,600000);i++) raw+=String.fromCharCode(bytes[i]);
-  const fragments=[];
-  // Descomprime FlateDecode
-  let pos=0;
-  while(true){
-    let si=raw.indexOf('stream\n',pos);
-    if(si<0){si=raw.indexOf('stream\r\n',pos);}
-    if(si<0)break;
-    const start=raw.indexOf('\n',si)+1;
-    const end=raw.indexOf('endstream',start);
-    if(end<0||end-start>300000){pos=si+7;continue;}
-    const hdr=raw.substring(Math.max(0,si-400),si);
-    if(hdr.indexOf('FlateDecode')>=0){
+async function decompress(data){
+  // Tenta vários modos
+  const variants=[
+    {mode:'deflate-raw',data:data[0]===0x78?data.slice(2):data},
+    {mode:'deflate-raw',data:data},
+    {mode:'deflate',data:data},
+    {mode:'deflate-raw',data:data[0]===0x78&&data[1]===0x9c?data.slice(2):data},
+  ];
+  for(const {mode,data:d} of variants){
+    try{
+      const blob=new Blob([d]);
+      const ds=new DecompressionStream(mode);
+      const stream=blob.stream().pipeThrough(ds);
+      const reader=stream.getReader();
+      const chunks=[];let total=0;
       try{
-        const data=bytes.slice(start,end);
-        const text=await decompressZlib(data);
-        if(text&&text.length>10){parseStreamFragments(text,fragments);log('info','Stream descomprimido: '+text.length+' chars');}
+        while(true){
+          const{done,value}=await reader.read();
+          if(done)break;
+          chunks.push(value);total+=value.length;
+          if(total>2000000)break;
+        }
       }catch(_){}
-    }
-    pos=end+9;
-  }
-  parseStreamFragments(raw,fragments);
-  if(!fragments.length){log('err','Nenhum fragmento encontrado!');return '';}
-  log('info','Fragmentos de texto: '+fragments.length);
-  fragments.sort((a,b)=>b.y-a.y||a.x-b.x);
-  const groups=[];let cur=null;
-  for(const f of fragments){
-    if(!f.text.trim())continue;
-    if(!cur||Math.abs(cur.y-f.y)>4){cur={y:f.y,frags:[f]};groups.push(cur);}
-    else cur.frags.push(f);
-  }
-  const lines=groups.map(g=>{
-    g.frags.sort((a,b)=>a.x-b.x);
-    return g.frags.map(f=>f.text).join(' ').trim();
-  }).filter(l=>l.length>0);
-  return lines.join('\n');
-}
-
-function parseStreamFragments(stream,fragments){
-  let curX=0,curY=0;
-  const lines=stream.split('\n');
-  for(let i=0;i<lines.length;i++){
-    const l=lines[i].trim();
-    if(!l)continue;
-    const sp=l.split(' ');
-    if(sp.length===3&&sp[2]==='Td'){
-      const x=parseFloat(sp[0]),y=parseFloat(sp[1]);
-      if(!isNaN(x)&&!isNaN(y)){curX=x;curY=y;}
-      continue;
-    }
-    if(l.endsWith(') Tj')&&l.startsWith('(')){
-      const inner=l.slice(1,l.length-4);
-      const text=decodePDFStr(inner);
-      if(text.trim())fragments.push({x:curX,y:curY,text:text.trim()});
-      continue;
-    }
-    if(l.endsWith('] TJ')||l.endsWith(']TJ')){
-      const inner=l.slice(1,l.lastIndexOf(']'));
-      const pRe=/\(([^)]*)\)/g;let pm;const parts=[];
-      while((pm=pRe.exec(inner))!==null)parts.push(decodePDFStr(pm[1]));
-      const text=parts.join('').trim();
-      if(text)fragments.push({x:curX,y:curY,text});
-      continue;
-    }
-  }
-}
-
-function decodePDFStr(s){
-  let result='',i=0;
-  while(i<s.length){
-    if(s[i]==='\\' && i+1<s.length){
-      if(s[i+1]>='0'&&s[i+1]<='7'&&i+3<=s.length){result+=String.fromCharCode(parseInt(s.slice(i+1,i+4),8));i+=4;}
-      else if(s[i+1]==='n'){result+=' ';i+=2;}
-      else if(s[i+1]==='r'){result+=' ';i+=2;}
-      else if(s[i+1]==='\\'){result+='\\';i+=2;}
-      else if(s[i+1]==='('){result+='(';i+=2;}
-      else if(s[i+1]===')'){result+=')';i+=2;}
-      else{result+=s[i+1];i+=2;}
-    }else{result+=s[i];i++;}
-  }
-  return result.trim();
-}
-
-async function decompressZlib(data){
-  const modes=['deflate-raw','deflate'];
-  const slices=data[0]===0x78?[data.slice(2),data]:[data];
-  for(const mode of modes){
-    for(const slice of slices){
-      try{
-        const blob=new Blob([slice]);
-        const ds=new DecompressionStream(mode);
-        const stream=blob.stream().pipeThrough(ds);
-        const reader=stream.getReader();
-        const chunks=[];let total=0;
-        try{while(true){const{done,value}=await reader.read();if(done)break;chunks.push(value);total+=value.length;if(total>3000000)break;}}catch(_){}
-        if(!chunks.length)continue;
-        const out=new Uint8Array(total);let off=0;
-        for(const c of chunks){out.set(c,off);off+=c.length;}
-        let text='';for(let i=0;i<out.length;i++)text+=String.fromCharCode(out[i]);
-        if(text.length>20)return text;
-      }catch(_){continue;}
-    }
+      if(!chunks.length)continue;
+      const out=new Uint8Array(total);
+      let off=0;for(const c of chunks){out.set(c,off);off+=c.length;}
+      let text='';for(let i=0;i<out.length;i++)text+=String.fromCharCode(out[i]);
+      if(text.length>20)return text;
+    }catch(_){}
   }
   return null;
 }
 
 const out=document.getElementById('output');
 function log(type,msg){
-  const d=document.createElement('div');
-  d.className=type;d.textContent=msg;
+  const d=document.createElement('div');d.className=type;d.textContent=msg;
   out.appendChild(d);out.scrollTop=out.scrollHeight;
 }
 </script>
