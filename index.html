@@ -11418,27 +11418,62 @@ async function handleImportFiles(files){
       const ext=file.name.split('.').pop().toLowerCase();
       const isPDF=ext==='pdf'||file.type==='application/pdf';
       if(isPDF){
-        // Extrai texto do PDF directamente (sem CDN)
+        // 1. Extrai texto do PDF
         const text=await extractPDFText(file);
+        console.log('PDF texto:',text?.length,'chars');
+
+        // 2. Parser local — sem API, sem internet
         if(text&&text.length>50){
-          const r=await callClaudeText(text,file.name);
-          if(r){r._filename=file.name;r.source='pdf-text';results.push(r);continue;}
+          const local=parseInvoiceText(text,file.name);
+          if(local&&local.items.length>0){
+            console.log('Parser local:',local.items.length,'artigos');
+            local._filename=file.name;
+            results.push(local);
+            continue;
+          }
         }
-        // Fallback: imagem
-        const imgUrl=await fileToDataUrl(file);
-        const r2=await callClaudeOCR(imgUrl);
-        if(r2){r2.photo=imgUrl;r2._filename=file.name;r2.source='pdf-img';results.push(r2);}
-        else results.push({_filename:file.name,_failed:true,items:[],source:'pdf'});
+
+        // 3. Fallback: API Claude (se tiver API key configurada)
+        if(config.apiKey&&text&&text.length>50){
+          const r=await callClaudeText(text,file.name);
+          if(r&&r.items.length>0){r._filename=file.name;r.source='pdf-api';results.push(r);continue;}
+        }
+
+        // 4. Fallback: tenta como imagem (OCR visual)
+        if(config.apiKey){
+          const imgUrl=await fileToDataUrl(file);
+          const r2=await callClaudeOCR(imgUrl);
+          if(r2){r2.photo=imgUrl;r2._filename=file.name;r2.source='pdf-img';results.push(r2);continue;}
+        }
+
+        // 5. Guarda o que o parser local encontrou mesmo sem artigos
+        if(text&&text.length>50){
+          const local2=parseInvoiceText(text,file.name)||{};
+          local2._filename=file.name;local2.source='pdf-local';local2.items=local2.items||[];
+          results.push(local2);
+        } else {
+          results.push({_filename:file.name,_failed:true,items:[],source:'pdf'});
+        }
+
       } else {
-        const dataUrl=await fileToDataUrl(file);
-        const r=await callClaudeOCR(dataUrl);
-        if(r){r.photo=dataUrl;r._filename=file.name;r.source='img';results.push(r);}
-        else results.push({_filename:file.name,_failed:true,photo:dataUrl,items:[],source:'img'});
+        // Imagem: precisa de API key para OCR
+        if(config.apiKey){
+          const dataUrl=await fileToDataUrl(file);
+          const r=await callClaudeOCR(dataUrl);
+          if(r){r.photo=dataUrl;r._filename=file.name;r.source='img';results.push(r);}
+          else results.push({_filename:file.name,_failed:true,items:[],source:'img'});
+        } else {
+          toast('⚠ Para importar imagens precisa de API Key nas configurações.','err',5000);
+          results.push({_filename:file.name,_failed:true,items:[],source:'img-no-key'});
+        }
       }
-    }catch(e){console.error(file.name,e);results.push({_filename:file.name,_failed:true,items:[],source:'err'});}
+    }catch(e){
+      console.error(file.name,e);
+      results.push({_filename:file.name,_failed:true,items:[],source:'err'});
+    }
   }
   showOCRLoading(false);
-  if(!results.length){toast('❌ Nenhuma fatura reconhecida','err');return;}
+  if(!results.length){toast('❌ Nenhuma fatura processada','err');return;}
   openImportReview(results);
 }
 
@@ -11525,67 +11560,46 @@ async function parsePDFBytes(bytes) {
 }
 
 // Descomprime zlib/deflate usando DecompressionStream nativo
+// Robusto: aceita dados extra no fim (junk after end)
 async function decompressZlib(data) {
-  try {
-    // Tenta deflate-raw (sem header zlib)
-    const ds = new DecompressionStream('deflate-raw');
-    const writer = ds.writable.getWriter();
-    const reader = ds.readable.getReader();
-    
-    // Escreve dados (ignora header zlib de 2 bytes se existir)
-    const toWrite = data[0] === 0x78 ? data.slice(2) : data;
-    writer.write(toWrite);
-    writer.close();
-    
-    const chunks = [];
-    let totalLen = 0;
-    try {
-      while(true) {
-        const {done, value} = await reader.read();
-        if(done) break;
-        chunks.push(value);
-        totalLen += value.length;
-        if(totalLen > 2000000) break; // limite 2MB por stream
-      }
-    } catch(_) {}
-    
-    if(!chunks.length) return null;
-    
-    // Junta chunks
-    const result = new Uint8Array(totalLen);
-    let offset = 0;
-    for(const chunk of chunks) { result.set(chunk, offset); offset += chunk.length; }
-    
-    // Converte para string
-    let text = '';
-    for(let i = 0; i < result.length; i++) text += String.fromCharCode(result[i]);
-    return text;
-  } catch(e) {
-    // Tenta deflate (com header)
-    try {
-      const ds2 = new DecompressionStream('deflate');
-      const writer2 = ds2.writable.getWriter();
-      const reader2 = ds2.readable.getReader();
-      writer2.write(data);
-      writer2.close();
-      const chunks2 = [];
-      let len2 = 0;
-      try {
-        while(true) {
-          const {done, value} = await reader2.read();
-          if(done) break;
-          chunks2.push(value); len2 += value.length;
+  // Tenta 3 variantes por ordem de probabilidade em PDFs
+  const variants = [
+    {mode:'deflate-raw', slice: data[0]===0x78 ? data.slice(2) : data},
+    {mode:'deflate-raw', slice: data},
+    {mode:'deflate',     slice: data},
+  ];
+  for(const {mode, slice} of variants){
+    try{
+      const chunks=[], ds=new DecompressionStream(mode);
+      const writer=ds.writable.getWriter();
+      const reader=ds.readable.getReader();
+      // Escreve em chunks pequenos para tolerar dados extra no fim
+      const CHUNK=65536;
+      (async()=>{
+        try{
+          for(let i=0;i<slice.length;i+=CHUNK){
+            await writer.write(slice.slice(i,i+CHUNK));
+          }
+        }catch(_){}
+        try{writer.close();}catch(_){}
+      })();
+      let totalLen=0;
+      try{
+        while(true){
+          const {done,value}=await reader.read();
+          if(done)break;
+          chunks.push(value);totalLen+=value.length;
+          if(totalLen>3000000)break;
         }
-      } catch(_) {}
-      if(!chunks2.length) return null;
-      const res2 = new Uint8Array(len2);
-      let off2 = 0;
-      for(const c of chunks2) { res2.set(c, off2); off2 += c.length; }
-      let text2 = '';
-      for(let i = 0; i < res2.length; i++) text2 += String.fromCharCode(res2[i]);
-      return text2;
-    } catch(_) { return null; }
+      }catch(_){} // ignora "junk after end"
+      if(!chunks.length)continue;
+      const result=new Uint8Array(totalLen);
+      let off=0;for(const c of chunks){result.set(c,off);off+=c.length;}
+      let text='';for(let i=0;i<result.length;i++)text+=String.fromCharCode(result[i]);
+      if(text.length>10)return text; // sucesso
+    }catch(_){continue;}
   }
+  return null;
 }
 
 // Extrai linhas de texto de um stream PDF descomprimido
@@ -11621,6 +11635,305 @@ function decodePDFString(s) {
     .replace(/\\n/g, ' ').replace(/\\r/g, ' ').replace(/\\t/g, ' ')
     .replace(/\\\\/g, '\\').replace(/\\\(/g, '(').replace(/\\\)/g, ')')
     .replace(/\\([0-7]{3})/g, (_, oct) => String.fromCharCode(parseInt(oct, 8)));
+}
+
+
+// ══════════════════════════════════════════════════════
+// PARSER LOCAL DE FATURAS PORTUGUESAS — sem API
+// Reconhece padrões de Makro, Metro, Recheio, etc.
+// ══════════════════════════════════════════════════════
+
+function parseInvoiceText(text, filename) {
+  if(!text || text.trim().length < 20) return null;
+
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  console.log(`Parser: ${lines.length} linhas`);
+
+  const result = {
+    supplier: '',
+    nif: '',
+    nifClient: '',
+    num: '',
+    date: '',
+    total: 0,
+    vat: 0,
+    atcud: '',
+    items: [],
+    source: 'local-parse'
+  };
+
+  // ── Extrai cabeçalho ──
+  extractHeader(lines, result);
+
+  // ── Extrai artigos ──
+  result.items = extractItems(lines);
+
+  // ── Se não encontrou artigos com método principal, tenta alternativo ──
+  if(result.items.length === 0) {
+    result.items = extractItemsFallback(lines);
+  }
+
+  console.log(`Parser: ${result.items.length} artigos encontrados`);
+  return result;
+}
+
+// ── Extrai dados do cabeçalho ──
+function extractHeader(lines, result) {
+  for(let i = 0; i < Math.min(lines.length, 60); i++) {
+    const l = lines[i];
+
+    // NIF (9 dígitos, pode ter prefixo PT)
+    if(!result.nif) {
+      const nifM = l.match(/(?:NIF|NIPC|Contribuinte)[:\s]*(?:PT)?(\d{9})/i)
+                || l.match(/^(?:PT)?(\d{9})$/);
+      if(nifM) result.nif = nifM[1];
+    }
+
+    // NIF cliente
+    if(!result.nifClient && result.nif) {
+      const nifM = l.match(/(?:NIF|NIPC|Contribuinte)[:\s]*(?:PT)?(\d{9})/i);
+      if(nifM && nifM[1] !== result.nif) result.nifClient = nifM[1];
+    }
+
+    // Número de fatura
+    if(!result.num) {
+      const numM = l.match(/(?:Fatura|Factura|Invoice|FT|FR|FS|NC)\s*[:\s\/]?\s*([A-Z0-9\/\-]{3,20})/i)
+                || l.match(/N[oº°]\s*[:\s]?\s*([A-Z0-9\/\-]{4,20})/i);
+      if(numM) result.num = numM[1].trim();
+    }
+
+    // Data (vários formatos)
+    if(!result.date) {
+      const dtM = l.match(/(\d{2})[\/\-\.](\d{2})[\/\-\.](\d{4})/)
+               || l.match(/(\d{4})[\/\-\.](\d{2})[\/\-\.](\d{2})/);
+      if(dtM) {
+        if(dtM[3] && dtM[3].length === 4) {
+          result.date = `${dtM[3]}-${dtM[2].padStart(2,'0')}-${dtM[1].padStart(2,'0')}`;
+        } else {
+          result.date = `${dtM[1]}-${dtM[2].padStart(2,'0')}-${dtM[3].padStart(2,'0')}`;
+        }
+      }
+    }
+
+    // Total
+    const totalM = l.match(/(?:Total\s*Geral|Total\s*a\s*Pagar|TOTAL)[:\s]*([0-9]+[.,][0-9]{2})/i);
+    if(totalM) result.total = parseFloat(totalM[1].replace(',','.'));
+
+    // IVA
+    const vatM = l.match(/(?:IVA|VAT|Taxa)[:\s]*([0-9]+[.,][0-9]{2})/i);
+    if(vatM && !result.vat) result.vat = parseFloat(vatM[1].replace(',','.'));
+
+    // ATCUD
+    const atcudM = l.match(/ATCUD[:\s]*([A-Z0-9\-]+)/i);
+    if(atcudM) result.atcud = atcudM[1];
+
+    // Nome do fornecedor (primeiras linhas com texto alfabético longo)
+    if(!result.supplier && i < 10) {
+      if(l.length > 5 && /[A-Za-záàâãéêíóôõúüç]{4,}/.test(l) && !/^\d/.test(l)) {
+        result.supplier = l.replace(/\s+/g,' ').trim();
+      }
+    }
+  }
+}
+
+// ── Método principal: detecta linhas de artigos por padrões de preço ──
+function extractItems(lines) {
+  const items = [];
+  const seen = new Set();
+
+  // Padrões de linha de artigo em faturas portuguesas:
+  // Descrição   Qtd   Unidade   Preço Unit   Total
+  // Ex: "Frango Inteiro   2   KG   1,50   3,00"
+  // Ex: "5601234567890   Azeite V. Extra 750ml   6 UN   3,99   23,94"
+
+  // Detecta zona de artigos (depois de "Descrição", "Artigo", "Produto")
+  let inItemsZone = false;
+  let headerLine = -1;
+
+  for(let i = 0; i < lines.length; i++) {
+    const l = lines[i];
+
+    // Detecta cabeçalho da tabela de artigos
+    if(/(?:Descri[çc][aã]o|Artigo|Produto|Refer[eê]ncia)/i.test(l) &&
+       /(?:Qtd|Quant|Un\.?|Pre[çc]o|Valor)/i.test(l)) {
+      inItemsZone = true;
+      headerLine = i;
+      continue;
+    }
+
+    // Para de procurar artigos nas linhas de total/rodapé
+    if(inItemsZone && /(?:^Total|^Subtotal|^IVA|^Desconto|Obrigado|Assinatura)/i.test(l)) {
+      if(items.length > 0) inItemsZone = false;
+    }
+
+    if(!inItemsZone && headerLine < 0) {
+      // Tenta detectar linhas de artigos mesmo sem zona definida
+      const item = parseItemLine(l, lines, i);
+      if(item && !seen.has(item.name.toLowerCase())) {
+        seen.add(item.name.toLowerCase());
+        items.push(item);
+      }
+    } else if(inItemsZone) {
+      const item = parseItemLine(l, lines, i);
+      if(item && !seen.has(item.name.toLowerCase())) {
+        seen.add(item.name.toLowerCase());
+        items.push(item);
+      }
+    }
+  }
+
+  return items;
+}
+
+// ── Tenta reconhecer uma linha como artigo ──
+function parseItemLine(line, lines, idx) {
+  if(!line || line.length < 5) return null;
+
+  // Ignora linhas que são claramente cabeçalho ou rodapé
+  if(/^(?:Total|Subtotal|IVA|Desconto|Data|Fatura|NIF|IBAN|Pag|Obs|Tel|Email|Rua|CP|Lx|Lisboa)/i.test(line)) return null;
+  if(/^\d{4}-\d{2}-\d{2}$/.test(line)) return null; // só data
+  if(line.length > 120) return null; // linha demasiado longa
+
+  // Padrão 1: linha com quantidade e preço no final
+  // "Frango Inteiro Kg  2,500  1,89  4,73"
+  const p1 = line.match(/^(.{3,50}?)\s+(\d+[.,]\d{1,3})\s+(\d+[.,]\d{2})\s+(\d+[.,]\d{2})\s*$/);
+  if(p1) {
+    const name = cleanName(p1[1]);
+    const qty  = parseNum(p1[2]);
+    const up   = parseNum(p1[3]);
+    const tp   = parseNum(p1[4]);
+    if(name && qty > 0 && up > 0 && tp > 0 && isReasonablePrice(up, tp, qty)) {
+      return buildItem(name, qty, up, tp, line);
+    }
+  }
+
+  // Padrão 2: "Descrição  Qtd  UN  PU  Total" (típico Makro/Metro)
+  const p2 = line.match(/^(.{3,50}?)\s+(\d+[.,]?\d*)\s+(?:KG|UN|LT|CX|PC|kg|un|lt|cx)\s+(\d+[.,]\d{2})\s+(\d+[.,]\d{2})\s*$/i);
+  if(p2) {
+    const name = cleanName(p2[1]);
+    const qty  = parseNum(p2[2]);
+    const up   = parseNum(p2[3]);
+    const tp   = parseNum(p2[4]);
+    const unit = line.match(/\b(KG|UN|LT|CX|PC|kg|un|lt|cx)\b/i)?.[0]?.toLowerCase()||'un';
+    if(name && qty > 0 && up > 0) {
+      return buildItem(name, qty, up, tp||qty*up, line, unit);
+    }
+  }
+
+  // Padrão 3: EAN + Descrição + valores
+  // "5601234567890  Azeite 750ml  6  3,99  23,94"
+  const p3 = line.match(/^\d{8,14}\s+(.{3,50}?)\s+(\d+[.,]?\d*)\s+(\d+[.,]\d{2})\s+(\d+[.,]\d{2})\s*$/);
+  if(p3) {
+    const name = cleanName(p3[1]);
+    const qty  = parseNum(p3[2]);
+    const up   = parseNum(p3[3]);
+    const tp   = parseNum(p3[4]);
+    if(name && qty > 0 && up > 0 && isReasonablePrice(up, tp, qty)) {
+      return buildItem(name, qty, up, tp, line);
+    }
+  }
+
+  // Padrão 4: referência + descrição na linha seguinte + preços espalhados
+  // Tenta juntar linhas consecutivas
+  if(idx < lines.length - 2) {
+    const combined = line + ' ' + lines[idx+1];
+    const p4 = combined.match(/^(.{5,60}?)\s+(\d+[.,]?\d*)\s+(\d+[.,]\d{2})\s+(\d+[.,]\d{2})\s*$/);
+    if(p4) {
+      const name = cleanName(p4[1]);
+      const qty  = parseNum(p4[2]);
+      const up   = parseNum(p4[3]);
+      const tp   = parseNum(p4[4]);
+      if(name && qty > 0 && up > 0 && isReasonablePrice(up, tp, qty)) {
+        return buildItem(name, qty, up, tp, combined);
+      }
+    }
+  }
+
+  return null;
+}
+
+// ── Fallback: procura qualquer linha com nome + dois preços ──
+function extractItemsFallback(lines) {
+  const items = [];
+  const seen = new Set();
+
+  for(let i = 0; i < lines.length; i++) {
+    const l = lines[i];
+    // Pelo menos uma palavra de 3+ letras + dois números que parecem preços
+    const prices = [...l.matchAll(/(\d+[.,]\d{2})/g)].map(m => parseNum(m[1]));
+    if(prices.length >= 2) {
+      const nameM = l.match(/^([A-Za-záàâãéêíóôõúüç][A-Za-záàâãéêíóôõúüç\s\.\-\/]{2,40})/);
+      if(nameM) {
+        const name = cleanName(nameM[1]);
+        if(!name || seen.has(name.toLowerCase())) continue;
+        if(isStopWord(name)) continue;
+        const up = prices[prices.length-2];
+        const tp = prices[prices.length-1];
+        if(up > 0 && tp > 0 && tp >= up * 0.5 && tp <= up * 100) {
+          seen.add(name.toLowerCase());
+          items.push(buildItem(name, Math.round(tp/up*10)/10||1, up, tp, l));
+        }
+      }
+    }
+  }
+  return items;
+}
+
+// ── Utilidades ──
+function parseNum(s) {
+  if(!s) return 0;
+  return parseFloat(s.replace(/\./g,'').replace(',','.')) || 0;
+}
+
+function cleanName(s) {
+  if(!s) return '';
+  return s.replace(/^\d{4,}\s*/, '') // remove ref numérica no início
+          .replace(/\s+/g,' ').trim()
+          .replace(/[,\.]+$/, '');
+}
+
+function isStopWord(name) {
+  const stops = /^(total|iva|desconto|subtotal|pagar|data|fatura|factura|obrigado|assinatura|entrega|obs|nota|ref|pag)/i;
+  return stops.test(name.trim());
+}
+
+function isReasonablePrice(up, tp, qty) {
+  if(up <= 0 || tp <= 0) return false;
+  const calc = up * qty;
+  const diff = Math.abs(calc - tp) / tp;
+  return diff < 0.15; // tolerância 15% para arredondamentos
+}
+
+function buildItem(name, qty, unitPrice, totalPrice, rawLine, unit) {
+  // Detecta unidade na linha
+  const unitM = rawLine?.match(/\b(kg|kgs|lt|lts|un|und|cx|caixa|pc|pcs|gr|g|ml|dl|l)\b/i);
+  const u = unit || (unitM ? unitM[1].toLowerCase() : 'un');
+  // Normaliza unidades
+  const unitMap = {kgs:'kg',lts:'lt',und:'un',pcs:'un',caixa:'cx',gr:'g',dl:'lt',ml:'lt'};
+
+  // Detecta taxa IVA típica por categoria de produto
+  const vatRate = guessVatRate(name);
+
+  return {
+    id: uid(),
+    name: name.slice(0,80),
+    qty: Math.round(qty * 1000) / 1000,
+    unit: unitMap[u] || u,
+    unitPrice: Math.round(unitPrice * 100) / 100,
+    totalPrice: Math.round(totalPrice * 100) / 100,
+    vatRate,
+    famId: ''
+  };
+}
+
+function guessVatRate(name) {
+  const n = name.toLowerCase();
+  // 6% — alimentares básicos
+  if(/(?:pão|leite|ovo|frango|carne|peixe|fruta|legume|vegetal|azeite|arroz|massa|farinha|açúcar|sal|manteiga|queijo|iogurte|bacalhau|atum|sardinha|salmão|fiambre|presunto|linguiça|chouriço|morcela|cenoura|batata|cebola|alho|tomate|laranja|maçã|banana|limão|uva|pera|melão)/i.test(n)) return 6;
+  // 13% — refeições, vinho
+  if(/(?:vinho|cerveja|refrigerante|sumo|água|bebida|café|chá)/i.test(n)) return 13;
+  // 23% — outros
+  return 23;
 }
 
 
@@ -11807,24 +12120,41 @@ async function _claudeCall(model,maxTokens,base64,prompt){
       ?[{type:'image',source:{type:'base64',media_type:'image/jpeg',data:base64}},{type:'text',text:prompt}]
       :[{type:'text',text:prompt}];
     const t0=Date.now();
+
+    // Usa API key própria se definida nas configurações
     const apiKey=config.apiKey||'';
-    const useProxy=!apiKey;
-    const url=useProxy?'https://claude-proxy.dontasko-geral.workers.dev':'https://api.anthropic.com/v1/messages';
-    const headers={'Content-Type':'application/json'};
-    if(apiKey){headers['x-api-key']=apiKey;headers['anthropic-version']='2023-06-01';}
-    const res=await fetch(url,{
+    if(apiKey){
+      const res=await fetch('https://api.anthropic.com/v1/messages',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01'},
+        body:JSON.stringify({model,max_tokens:maxTokens,messages:[{role:'user',content}]})
+      });
+      const data=await res.json();
+      console.log('OCR '+model+' em '+((Date.now()-t0)/1000).toFixed(1)+'s');
+      if(data.error){console.error('API:',data.error);return null;}
+      const text=data.content?.[0]?.text||'';
+      return parseJSON(text);
+    }
+
+    // Sem API key — usa fetch à API de artefactos (Claude.ai built-in)
+    const res=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
-      headers,
+      headers:{'Content-Type':'application/json'},
       body:JSON.stringify({model,max_tokens:maxTokens,messages:[{role:'user',content}]})
     });
     const data=await res.json();
     console.log('OCR '+model+' em '+((Date.now()-t0)/1000).toFixed(1)+'s');
-    if(data.error){console.error('API:',data.error);return null;}
+    if(data.error){console.error('API:',data.error);toast('⚠ API: '+JSON.stringify(data.error),'err',8000);return null;}
     const text=data.content?.[0]?.text||'';
-    try{const p=JSON.parse(text.replace(/```json|```/g,'').trim());if(!p.items)p.items=[];return p;}
-    catch(_){const m=text.match(/\{[\s\S]*\}/);if(m){try{const p=JSON.parse(m[0]);if(!p.items)p.items=[];return p;}catch(_){}}return null;}
+    return parseJSON(text);
   }catch(e){console.error('_claudeCall:',e);return null;}
 }
+
+function parseJSON(text){
+  try{const p=JSON.parse(text.replace(/```json|```/g,'').trim());if(!p.items)p.items=[];return p;}
+  catch(_){const m=text.match(/\{[\s\S]*\}/);if(m){try{const p=JSON.parse(m[0]);if(!p.items)p.items=[];return p;}catch(_){}}return null;}
+}
+
 
 // ── IMPORTAR REVISÃO ──
 function openImportReview(results){
