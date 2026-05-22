@@ -431,6 +431,7 @@ header{
         <div class="fi full"><label>Nome da empresa</label><input id="cfg-biz" type="text" placeholder="Don Tasko Lda."></div>
         <div class="fi full"><label>NIF</label><input id="cfg-nif" type="text" inputmode="numeric" placeholder="509 000 000"></div>
         <div class="fi full"><label>Limiar de alerta (%)</label><input id="cfg-alert-pct" type="number" min="1" max="100" step="1" inputmode="decimal" placeholder="10"></div>
+        <div class="fi full"><label>API Key Anthropic (opcional)</label><input id="cfg-apikey" type="password" placeholder="sk-ant-... (deixe vazio para usar proxy)"></div>
       </div>
       <button class="btn btn-prim" style="width:100%" onclick="saveCfg()">Guardar configurações</button>
     </div>
@@ -10774,7 +10775,7 @@ const LS={
 let invoices=LS.get('ss_inv')||[];
 let articles=LS.get('ss_art')||[];
 let families=LS.get('ss_fam')||defFam();
-let config=LS.get('ss_cfg')||{biz:'',nif:'',alertPct:10};
+let config=LS.get('ss_cfg')||{biz:'',nif:'',alertPct:10,apiKey:''};
 let alerts=LS.get('ss_alerts')||[];
 let camStream=null,camAF=null,camFacing='environment',camMode='qr';
 let editInvId=null,editArtId=null,editFamId=null;
@@ -11328,10 +11329,11 @@ function renderConfig(){
   document.getElementById('cfg-biz').value=config.biz||'';
   document.getElementById('cfg-nif').value=config.nif||'';
   document.getElementById('cfg-alert-pct').value=config.alertPct||10;
+  document.getElementById('cfg-apikey').value=config.apiKey||'';
   document.getElementById('cfg-counts').textContent=`${invoices.length} faturas · ${articles.length} artigos · ${alerts.filter(a=>!a.resolved).length} alertas activos`;
   renderFamilyList();
 }
-function saveCfg(){config.biz=document.getElementById('cfg-biz').value.trim();config.nif=document.getElementById('cfg-nif').value.trim();config.alertPct=parseFloat(document.getElementById('cfg-alert-pct').value)||10;persist();toast('✅ Guardado!');}
+function saveCfg(){config.biz=document.getElementById('cfg-biz').value.trim();config.nif=document.getElementById('cfg-nif').value.trim();config.alertPct=parseFloat(document.getElementById('cfg-alert-pct').value)||10;config.apiKey=document.getElementById('cfg-apikey').value.trim();persist();toast('✅ Guardado!');}
 function renderFamilyList(){
   document.getElementById('fam-list').innerHTML=families.map(f=>`
     <div class="cat-row">
@@ -11444,56 +11446,204 @@ function fileToDataUrl(file){
   return new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.onerror=rej;r.readAsDataURL(file);});
 }
 
-async function extractPDFText(file){
-  return new Promise(resolve=>{
-    const reader=new FileReader();
-    reader.onload=e=>{
-      try{
-        const bytes=new Uint8Array(e.target.result);
-        let raw='';
-        for(let i=0;i<Math.min(bytes.length,500000);i++) raw+=String.fromCharCode(bytes[i]);
-        const lines=[];
-        // Extrai texto de blocos BT...ET
-        const btRe=/BT([\s\S]{1,2000}?)ET/g;
-        let bm;
-        while((bm=btRe.exec(raw))!==null){
-          const block=bm[1];
-          const tjRe=/\(([^)]{1,200})\)\s*Tj/g;
-          let tm;
-          while((tm=tjRe.exec(block))!==null){
-            const s=tm[1].replace(/\\n/g,' ').replace(/\\r/g,' ').trim();
-            if(s.length>1)lines.push(s);
-          }
-          const arrRe=/\[([^\]]{1,500})\]\s*TJ/g;
-          let am;
-          while((am=arrRe.exec(block))!==null){
-            const pRe=/\(([^)]{1,100})\)/g;
-            let pm;const parts=[];
-            while((pm=pRe.exec(am[1]))!==null)parts.push(pm[1]);
-            const c=parts.join('').trim();
-            if(c.length>1)lines.push(c);
-          }
-        }
-        if(lines.length<5){
-          // Fallback: strings visíveis
-          const pRe=/\(([A-Za-z\u00C0-\u024F0-9\u20AC.,\-\s\/]{3,80})\)/g;
-          let pm;
-          while((pm=pRe.exec(raw))!==null){const s=pm[1].trim();if(s.length>2)lines.push(s);}
-        }
-        resolve(lines.join('\n'));
-      }catch(err){console.warn('PDF text error:',err);resolve('');}
+// ── Extractor de texto PDF com suporte FlateDecode (sem CDN) ──
+// Usa DecompressionStream nativo do browser para descomprimir streams PDF
+
+async function extractPDFText(file) {
+  return new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = async e => {
+      try {
+        const bytes = new Uint8Array(e.target.result);
+        const text = await parsePDFBytes(bytes);
+        resolve(text);
+      } catch(err) {
+        console.warn('PDF parse error:', err);
+        resolve('');
+      }
     };
-    reader.onerror=()=>resolve('');
+    reader.onerror = () => resolve('');
     reader.readAsArrayBuffer(file);
   });
 }
 
+async function parsePDFBytes(bytes) {
+  // Converte para string para encontrar estruturas do PDF
+  let raw = '';
+  for(let i = 0; i < bytes.length; i++) raw += String.fromCharCode(bytes[i]);
+
+  const textLines = [];
+
+  // ── Método 1: Descomprime streams FlateDecode (Makro, Metro, etc.) ──
+  // Encontra todos os streams comprimidos
+  const streamRe = /stream\r?\n/g;
+  let sm;
+  while((sm = streamRe.exec(raw)) !== null) {
+    const streamStart = sm.index + sm[0].length;
+    const endIdx = raw.indexOf('endstream', streamStart);
+    if(endIdx < 0 || endIdx - streamStart > 500000) continue;
+
+    // Verifica se é FlateDecode (zlib)
+    const headerArea = raw.substring(Math.max(0, sm.index - 500), sm.index);
+    if(!headerArea.includes('FlateDecode') && !headerArea.includes('Fl\n')) continue;
+
+    try {
+      // Extrai bytes do stream
+      const streamBytes = bytes.slice(streamStart, endIdx);
+      // Descomprime com DecompressionStream (nativo no browser)
+      const decompressed = await decompressZlib(streamBytes);
+      if(decompressed) {
+        const decoded = extractTextFromStream(decompressed);
+        if(decoded) textLines.push(...decoded);
+      }
+    } catch(_) {}
+  }
+
+  // ── Método 2: Streams não comprimidos (texto directo) ──
+  if(textLines.length < 5) {
+    const btRe = /BT([\s\S]{1,3000}?)ET/g;
+    let bm;
+    while((bm = btRe.exec(raw)) !== null) {
+      const lines = extractTextFromStream(bm[1]);
+      if(lines) textLines.push(...lines);
+    }
+  }
+
+  // ── Método 3: Strings literais visíveis (último recurso) ──
+  if(textLines.length < 5) {
+    const pRe = /\(([A-Za-z\u00C0-\u024F0-9\u20AC.,\-\s\/]{3,80})\)/g;
+    let pm;
+    while((pm = pRe.exec(raw)) !== null) {
+      const s = pm[1].trim();
+      if(s.length > 2) textLines.push(s);
+    }
+  }
+
+  const result = textLines.join('\n');
+  console.log(`PDF extraído: ${textLines.length} linhas, ${result.length} chars`);
+  return result;
+}
+
+// Descomprime zlib/deflate usando DecompressionStream nativo
+async function decompressZlib(data) {
+  try {
+    // Tenta deflate-raw (sem header zlib)
+    const ds = new DecompressionStream('deflate-raw');
+    const writer = ds.writable.getWriter();
+    const reader = ds.readable.getReader();
+    
+    // Escreve dados (ignora header zlib de 2 bytes se existir)
+    const toWrite = data[0] === 0x78 ? data.slice(2) : data;
+    writer.write(toWrite);
+    writer.close();
+    
+    const chunks = [];
+    let totalLen = 0;
+    try {
+      while(true) {
+        const {done, value} = await reader.read();
+        if(done) break;
+        chunks.push(value);
+        totalLen += value.length;
+        if(totalLen > 2000000) break; // limite 2MB por stream
+      }
+    } catch(_) {}
+    
+    if(!chunks.length) return null;
+    
+    // Junta chunks
+    const result = new Uint8Array(totalLen);
+    let offset = 0;
+    for(const chunk of chunks) { result.set(chunk, offset); offset += chunk.length; }
+    
+    // Converte para string
+    let text = '';
+    for(let i = 0; i < result.length; i++) text += String.fromCharCode(result[i]);
+    return text;
+  } catch(e) {
+    // Tenta deflate (com header)
+    try {
+      const ds2 = new DecompressionStream('deflate');
+      const writer2 = ds2.writable.getWriter();
+      const reader2 = ds2.readable.getReader();
+      writer2.write(data);
+      writer2.close();
+      const chunks2 = [];
+      let len2 = 0;
+      try {
+        while(true) {
+          const {done, value} = await reader2.read();
+          if(done) break;
+          chunks2.push(value); len2 += value.length;
+        }
+      } catch(_) {}
+      if(!chunks2.length) return null;
+      const res2 = new Uint8Array(len2);
+      let off2 = 0;
+      for(const c of chunks2) { res2.set(c, off2); off2 += c.length; }
+      let text2 = '';
+      for(let i = 0; i < res2.length; i++) text2 += String.fromCharCode(res2[i]);
+      return text2;
+    } catch(_) { return null; }
+  }
+}
+
+// Extrai linhas de texto de um stream PDF descomprimido
+function extractTextFromStream(streamText) {
+  const lines = [];
+  
+  // Strings Tj simples: (texto)Tj
+  const tjRe = /\(([^)]{1,300})\)\s*Tj/g;
+  let tm;
+  while((tm = tjRe.exec(streamText)) !== null) {
+    const s = decodePDFString(tm[1]);
+    if(s.trim().length > 0) lines.push(s.trim());
+  }
+  
+  // Arrays TJ: [(texto) spacing (texto)]TJ
+  const arrRe = /\[([^\]]{1,1000})\]\s*TJ/g;
+  let am;
+  while((am = arrRe.exec(streamText)) !== null) {
+    const inner = am[1];
+    const pRe2 = /\(([^)]{1,200})\)/g;
+    let pm; const parts = [];
+    while((pm = pRe2.exec(inner)) !== null) parts.push(decodePDFString(pm[1]));
+    const combined = parts.join('').trim();
+    if(combined.length > 0) lines.push(combined);
+  }
+  
+  return lines.length ? lines : null;
+}
+
+// Descodifica string PDF (escapes e caracteres especiais)
+function decodePDFString(s) {
+  return s
+    .replace(/\\n/g, ' ').replace(/\\r/g, ' ').replace(/\\t/g, ' ')
+    .replace(/\\\\/g, '\\').replace(/\\\(/g, '(').replace(/\\\)/g, ')')
+    .replace(/\\([0-7]{3})/g, (_, oct) => String.fromCharCode(parseInt(oct, 8)));
+}
+
+
 async function callClaudeText(pdfText,filename){
-  const prompt='Fatura portuguesa em texto. JSON compacto sem markdown.\n'+
-    'Texto:\n---\n'+pdfText.slice(0,6000)+'\n---\n'+
-    'Formato:{"supplier":"","nif":"","nifClient":"","num":"","date":"YYYY-MM-DD","total":0,"vat":0,"atcud":"","items":[{"name":"","qty":1,"unit":"kg","unitPrice":0,"totalPrice":0,"vatRate":6}]}\n'+
-    'Regras: TODOS os artigos; unit=kg/un/L/cx/g/lt; sem serviços.';
-  return _claudeCall('claude-haiku-4-5-20251001',1500,null,prompt);
+  if(!pdfText||pdfText.trim().length<30){
+    console.warn('PDF sem texto suficiente:',pdfText?.length);
+    return null;
+  }
+  const prompt=`Fatura portuguesa de fornecedor alimentar (ex: Makro, Metro, Recheio).
+Texto extraído do PDF:
+---
+${pdfText.slice(0,7000)}
+---
+Extrai os dados em JSON compacto (sem markdown, sem texto extra).
+Formato exacto:
+{"supplier":"nome do fornecedor","nif":"NIF 9 dígitos","nifClient":"NIF cliente","num":"nº fatura","date":"YYYY-MM-DD","total":0.00,"vat":0.00,"atcud":"","items":[{"name":"nome completo do artigo","qty":1.0,"unit":"kg","unitPrice":0.00,"totalPrice":0.00,"vatRate":6}]}
+REGRAS CRÍTICAS:
+- Extrai TODOS os artigos/produtos da fatura (podem ser muitos)
+- Ignora linhas de serviços, portes, taxas
+- unit: normaliza para kg/un/L/cx/g/lt/dz
+- Se não encontrares artigos, items:[]
+- Responde APENAS com o JSON`;
+  return _claudeCall('claude-haiku-4-5-20251001',2000,null,prompt);
 }
 
 // ── CÂMARA ──
@@ -11657,9 +11807,14 @@ async function _claudeCall(model,maxTokens,base64,prompt){
       ?[{type:'image',source:{type:'base64',media_type:'image/jpeg',data:base64}},{type:'text',text:prompt}]
       :[{type:'text',text:prompt}];
     const t0=Date.now();
-    const res=await fetch('https://claude-proxy.dontasko-geral.workers.dev',{
+    const apiKey=config.apiKey||'';
+    const useProxy=!apiKey;
+    const url=useProxy?'https://claude-proxy.dontasko-geral.workers.dev':'https://api.anthropic.com/v1/messages';
+    const headers={'Content-Type':'application/json'};
+    if(apiKey){headers['x-api-key']=apiKey;headers['anthropic-version']='2023-06-01';}
+    const res=await fetch(url,{
       method:'POST',
-      headers:{'Content-Type':'application/json'},
+      headers,
       body:JSON.stringify({model,max_tokens:maxTokens,messages:[{role:'user',content}]})
     });
     const data=await res.json();
