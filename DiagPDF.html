@@ -5,23 +5,23 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Diagnóstico PDF</title>
 <style>
-body{background:#0A0A0A;color:#F0F0E8;font-family:monospace;padding:16px;max-width:600px;margin:0 auto}
+body{background:#0A0A0A;color:#F0F0E8;font-family:monospace;padding:16px;max-width:700px;margin:0 auto}
 h1{color:#CBFF4D;font-size:18px;margin-bottom:16px}
 button{background:#CBFF4D;color:#000;border:none;padding:12px 20px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;width:100%;margin-bottom:12px}
-#output{background:#111;border:1px solid #2A2A2A;border-radius:8px;padding:12px;white-space:pre-wrap;font-size:11px;max-height:70vh;overflow-y:auto;line-height:1.5}
-.ok{color:#CBFF4D}.err{color:#F87171}.info{color:#60A5FA}
+#output{background:#111;border:1px solid #2A2A2A;border-radius:8px;padding:12px;white-space:pre-wrap;font-size:11px;max-height:80vh;overflow-y:auto;line-height:1.6}
+.ok{color:#CBFF4D}.err{color:#F87171}.info{color:#60A5FA}.warn{color:#FFB84D}
 </style>
 </head>
 <body>
-<h1>🔍 Diagnóstico PDF</h1>
-<button onclick="pickFile()">Seleccionar PDF para analisar</button>
+<h1>🔍 Diagnóstico PDF v2</h1>
+<button onclick="pickFile()">Seleccionar PDF</button>
 <div id="output">Aguarda ficheiro...</div>
-
 <script>
 function pickFile(){
   const inp=document.createElement('input');
   inp.type='file';inp.accept='.pdf,application/pdf';
   inp.onchange=e=>{
+    document.getElementById('output').innerHTML='';
     const file=e.target.files[0];
     if(!file)return;
     log('info','Ficheiro: '+file.name+' ('+Math.round(file.size/1024)+'KB)');
@@ -33,93 +33,121 @@ function pickFile(){
 async function readPDF(file){
   const reader=new FileReader();
   reader.onload=async e=>{
-    const bytes=new Uint8Array(e.target.result);
-    log('info','Bytes: '+bytes.length);
-
-    // Raw string
-    let raw='';
-    for(let i=0;i<Math.min(bytes.length,500000);i++) raw+=String.fromCharCode(bytes[i]);
-
-    // Count streams
-    const streams=(raw.match(/stream\r?\n/g)||[]).length;
-    const flatStreams=(raw.match(/FlateDecode/g)||[]).length;
-    log('info','Streams: '+streams+' (FlateDecode: '+flatStreams+')');
-
-    // Try BT/ET extraction
-    const btBlocks=(raw.match(/BT[\s\S]{1,2000}?ET/g)||[]);
-    log('info','Blocos BT/ET: '+btBlocks.length);
-
-    const lines=[];
-
-    // Method 1: BT/ET
-    for(const block of btBlocks){
-      const tjRe=/\(([^)]{1,200})\)\s*Tj/g;
-      let m;
-      while((m=tjRe.exec(block))!==null){
-        const s=m[1].replace(/\\n/g,' ').trim();
-        if(s.length>0)lines.push(s);
+    try{
+      const bytes=new Uint8Array(e.target.result);
+      log('info','Bytes: '+bytes.length);
+      const text=await parsePDFBytes(bytes);
+      const lines=text.split('\n').filter(l=>l.trim());
+      log('ok','TOTAL LINHAS RECONSTRUÍDAS: '+lines.length);
+      log('ok','');
+      log('ok','=== PRIMEIRAS 80 LINHAS ===');
+      lines.slice(0,80).forEach((l,i)=>{
+        const clean=l.trim();
+        const isArt=/^\([ABCNS]\)\s/.test(clean);
+        log(isArt?'warn':'ok',i.toString().padStart(3)+': '+clean);
+      });
+      log('ok','');
+      const artLines=lines.filter(l=>/^\([ABCNS]\)\s/.test(l.trim()));
+      log('info','Linhas com padrão (A/B/C): '+artLines.length);
+      if(artLines.length){
+        log('warn','Exemplos de artigos:');
+        artLines.slice(0,10).forEach(l=>log('warn','  '+l.trim()));
+      } else {
+        log('err','⚠ Padrão (A/B/C) NÃO encontrado!');
+        log('err','Mostrando linhas que contêm preços (X,XX):');
+        lines.filter(l=>/\d,\d\d/.test(l)).slice(0,20).forEach(l=>log('err','  '+l.trim()));
       }
-      const arrRe=/\[([^\]]{1,500})\]\s*TJ/g;
-      let am;
-      while((am=arrRe.exec(block))!==null){
-        const pRe=/\(([^)]{1,100})\)/g;
-        let pm;const parts=[];
-        while((pm=pRe.exec(am[1]))!==null)parts.push(pm[1]);
-        const c=parts.join('').trim();
-        if(c.length>0)lines.push(c);
-      }
-    }
-
-    log('info','Linhas BT/ET: '+lines.length);
-
-    // Try FlateDecode
-    let decompLines=[];
-    if(typeof DecompressionStream!=='undefined'){
-      const streamRe=/stream\r?\n/g;
-      let sm;let count=0;
-      while((sm=streamRe.exec(raw))!==null&&count<20){
-        const start=sm.index+sm[0].length;
-        const end=raw.indexOf('endstream',start);
-        if(end<0||end-start>200000)continue;
-        const hdr=raw.substring(Math.max(0,sm.index-300),sm.index);
-        if(!hdr.includes('FlateDecode'))continue;
-        count++;
-        try{
-          const data=bytes.slice(start,end);
-          const text=await decompress(data);
-          if(text&&text.length>10){
-            const sl=text.split('\n').map(l=>l.trim()).filter(l=>l.length>0);
-            decompLines.push(...sl);
-          }
-        }catch(_){}
-      }
-    }
-    log('info','Linhas FlateDecode: '+decompLines.length);
-
-    // Combine
-    const allLines=[...new Set([...lines,...decompLines])];
-    log('ok','TOTAL LINHAS: '+allLines.length);
-    log('ok','');
-    log('ok','=== PRIMEIRAS 60 LINHAS ===');
-    allLines.slice(0,60).forEach((l,i)=>{
-      log('ok',i.toString().padStart(3)+': '+JSON.stringify(l));
-    });
-
-    // Check for Continente pattern
-    const contPat=allLines.filter(l=>/^\([ABCNS]\)\s/.test(l));
-    log('info','');
-    log('info','Linhas com padrão (A/B/C): '+contPat.length);
-    if(contPat.length){
-      log('ok','Exemplos:');
-      contPat.slice(0,5).forEach(l=>log('ok','  '+l));
-    } else {
-      log('err','⚠ Padrão (A/B/C) NÃO encontrado — o parser não vai funcionar');
-    }
+    }catch(e){log('err','Erro: '+e.message);}
   };
   reader.readAsArrayBuffer(file);
 }
 
-async function decompress(data){
+async function parsePDFBytes(bytes){
+  let raw='';
+  for(let i=0;i<Math.min(bytes.length,600000);i++) raw+=String.fromCharCode(bytes[i]);
+  const fragments=[];
+  // Descomprime FlateDecode
+  let pos=0;
+  while(true){
+    let si=raw.indexOf('stream\n',pos);
+    if(si<0){si=raw.indexOf('stream\r\n',pos);}
+    if(si<0)break;
+    const start=raw.indexOf('\n',si)+1;
+    const end=raw.indexOf('endstream',start);
+    if(end<0||end-start>300000){pos=si+7;continue;}
+    const hdr=raw.substring(Math.max(0,si-400),si);
+    if(hdr.indexOf('FlateDecode')>=0){
+      try{
+        const data=bytes.slice(start,end);
+        const text=await decompressZlib(data);
+        if(text&&text.length>10){parseStreamFragments(text,fragments);log('info','Stream descomprimido: '+text.length+' chars');}
+      }catch(_){}
+    }
+    pos=end+9;
+  }
+  parseStreamFragments(raw,fragments);
+  if(!fragments.length){log('err','Nenhum fragmento encontrado!');return '';}
+  log('info','Fragmentos de texto: '+fragments.length);
+  fragments.sort((a,b)=>b.y-a.y||a.x-b.x);
+  const groups=[];let cur=null;
+  for(const f of fragments){
+    if(!f.text.trim())continue;
+    if(!cur||Math.abs(cur.y-f.y)>4){cur={y:f.y,frags:[f]};groups.push(cur);}
+    else cur.frags.push(f);
+  }
+  const lines=groups.map(g=>{
+    g.frags.sort((a,b)=>a.x-b.x);
+    return g.frags.map(f=>f.text).join(' ').trim();
+  }).filter(l=>l.length>0);
+  return lines.join('\n');
+}
+
+function parseStreamFragments(stream,fragments){
+  let curX=0,curY=0;
+  const lines=stream.split('\n');
+  for(let i=0;i<lines.length;i++){
+    const l=lines[i].trim();
+    if(!l)continue;
+    const sp=l.split(' ');
+    if(sp.length===3&&sp[2]==='Td'){
+      const x=parseFloat(sp[0]),y=parseFloat(sp[1]);
+      if(!isNaN(x)&&!isNaN(y)){curX=x;curY=y;}
+      continue;
+    }
+    if(l.endsWith(') Tj')&&l.startsWith('(')){
+      const inner=l.slice(1,l.length-4);
+      const text=decodePDFStr(inner);
+      if(text.trim())fragments.push({x:curX,y:curY,text:text.trim()});
+      continue;
+    }
+    if(l.endsWith('] TJ')||l.endsWith(']TJ')){
+      const inner=l.slice(1,l.lastIndexOf(']'));
+      const pRe=/\(([^)]*)\)/g;let pm;const parts=[];
+      while((pm=pRe.exec(inner))!==null)parts.push(decodePDFStr(pm[1]));
+      const text=parts.join('').trim();
+      if(text)fragments.push({x:curX,y:curY,text});
+      continue;
+    }
+  }
+}
+
+function decodePDFStr(s){
+  let result='',i=0;
+  while(i<s.length){
+    if(s[i]==='\\' && i+1<s.length){
+      if(s[i+1]>='0'&&s[i+1]<='7'&&i+3<=s.length){result+=String.fromCharCode(parseInt(s.slice(i+1,i+4),8));i+=4;}
+      else if(s[i+1]==='n'){result+=' ';i+=2;}
+      else if(s[i+1]==='r'){result+=' ';i+=2;}
+      else if(s[i+1]==='\\'){result+='\\';i+=2;}
+      else if(s[i+1]==='('){result+='(';i+=2;}
+      else if(s[i+1]===')'){result+=')';i+=2;}
+      else{result+=s[i+1];i+=2;}
+    }else{result+=s[i];i++;}
+  }
+  return result.trim();
+}
+
+async function decompressZlib(data){
   const modes=['deflate-raw','deflate'];
   const slices=data[0]===0x78?[data.slice(2),data]:[data];
   for(const mode of modes){
@@ -130,13 +158,13 @@ async function decompress(data){
         const stream=blob.stream().pipeThrough(ds);
         const reader=stream.getReader();
         const chunks=[];let total=0;
-        try{while(true){const{done,value}=await reader.read();if(done)break;chunks.push(value);total+=value.length;if(total>1000000)break;}}catch(_){}
+        try{while(true){const{done,value}=await reader.read();if(done)break;chunks.push(value);total+=value.length;if(total>3000000)break;}}catch(_){}
         if(!chunks.length)continue;
         const out=new Uint8Array(total);let off=0;
         for(const c of chunks){out.set(c,off);off+=c.length;}
         let text='';for(let i=0;i<out.length;i++)text+=String.fromCharCode(out[i]);
         if(text.length>20)return text;
-      }catch(_){}
+      }catch(_){continue;}
     }
   }
   return null;
@@ -144,9 +172,9 @@ async function decompress(data){
 
 const out=document.getElementById('output');
 function log(type,msg){
-  const line=document.createElement('div');
-  line.className=type;line.textContent=msg;
-  out.appendChild(line);out.scrollTop=out.scrollHeight;
+  const d=document.createElement('div');
+  d.className=type;d.textContent=msg;
+  out.appendChild(d);out.scrollTop=out.scrollHeight;
 }
 </script>
 </body>
