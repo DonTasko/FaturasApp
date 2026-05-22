@@ -398,6 +398,7 @@ header{
       <div class="card-title">Top artigos · custo total</div>
       <div id="dash-top-art"></div>
     </div>
+    <div id="dash-recipes"></div>
     <div>
       <div class="card-title" style="padding:0 2px 8px">Faturas recentes</div>
       <div class="gap8" id="recent-list"></div>
@@ -464,13 +465,25 @@ header{
     </div>
   </div>
 
+  <!-- RECEITAS -->
+  <div class="page" id="p-rec">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:0 2px 4px">
+      <div class="card-title" style="margin:0">Receituário</div>
+      <button class="btn btn-prim" style="flex:0;padding:8px 14px;font-size:10px" onclick="openRecipeForm(null)">+ Nova</button>
+    </div>
+    <div class="srch">🔍 <input type="text" id="rec-srch" placeholder="Nome da receita..." oninput="renderRecipeList()"></div>
+    <div class="chips" id="rec-filter-chips"></div>
+    <div class="gap8" id="rec-list"></div>
+  </div>
+
+
 </div>
 
 <nav class="bot-nav">
   <button class="bn on" id="bn-dash" onclick="goPage('dash',this)"><span class="bn-ic">◎</span><span class="bn-lbl">Início</span></button>
   <button class="bn" id="bn-inv" onclick="goPage('inv',this)"><span class="bn-ic">🧾</span><span class="bn-lbl">Faturas</span></button>
   <button class="bn" id="bn-art" onclick="goPage('art',this)"><span class="bn-ic">📦</span><span class="bn-lbl">Artigos</span></button>
-  <button class="bn" id="bn-alerts" onclick="goPage('alerts',this)"><span class="bn-ic">⚠</span><span class="bn-lbl">Alertas</span></button>
+  <button class="bn" id="bn-rec" onclick="goPage('rec',this)"><span class="bn-ic">📋</span><span class="bn-lbl">Receitas</span></button>
   <button class="bn" id="bn-cfg" onclick="goPage('cfg',this)"><span class="bn-ic">⚙</span><span class="bn-lbl">Config</span></button>
 </nav>
 
@@ -549,6 +562,11 @@ header{
         <div class="fi full"><label>Nome</label><input id="ea-name" type="text"></div>
         <div class="fi"><label>Unidade</label><input id="ea-unit" type="text" placeholder="un/kg/L/cx"></div>
         <div class="fi"><label>EAN/Código</label><input id="ea-ean" type="text" inputmode="numeric"></div>
+        <div class="fi full">
+          <label>Preço actual (€/<span id="ea-unit-lbl">un</span>)</label>
+          <input id="ea-price" type="number" step="0.01" inputmode="decimal" placeholder="0.00"
+            oninput="document.getElementById('ea-unit-lbl').textContent=document.getElementById('ea-unit').value||'un'">
+        </div>
       </div>
       <div class="card-title" style="margin-bottom:8px">Família</div>
       <div class="fam-grid" id="ea-fam-grid"></div>
@@ -660,6 +678,97 @@ header{
     </div>
   </div>
 </div>
+
+<!-- MODAL: Detalhe Receita -->
+<div class="overlay" id="m-recdetail">
+  <div class="sheet">
+    <div class="sh-handle"></div>
+    <div class="sh-hdr"><h3 id="d-rec-name">Receita</h3><button class="sh-close" onclick="closeSheet('m-recdetail')">✕</button></div>
+    <div class="sh-body" id="d-rec-body"></div>
+    <div class="sh-footer" id="d-rec-footer"></div>
+  </div>
+</div>
+
+<!-- MODAL: Nova/Editar Receita -->
+<div class="overlay" id="m-recipe-form">
+  <div class="sheet" style="max-height:96vh">
+    <div class="sh-handle"></div>
+    <div class="sh-hdr"><h3 id="m-rec-title">Nova Receita</h3><button class="sh-close" onclick="closeSheet('m-recipe-form')">✕</button></div>
+    <div class="sh-body">
+      <!-- Campos base -->
+      <div class="fg" style="margin-bottom:14px">
+        <div class="fi full"><label>Nome da receita *</label><input id="rf-name" type="text" placeholder="Ex: Bife com molho"></div>
+        <div class="fi">
+          <label>Categoria</label>
+          <select id="rf-cat">
+            <option value="entrada">🥗 Entrada</option>
+            <option value="prato" selected>🍽 Prato</option>
+            <option value="sobremesa">🍮 Sobremesa</option>
+            <option value="base">🥣 Base/Prep.</option>
+            <option value="bebida">🍷 Bebida</option>
+            <option value="outro">📋 Outro</option>
+          </select>
+        </div>
+        <div class="fi"><label>Doses / receita</label><input id="rf-doses" type="number" value="1" min="1" step="1" inputmode="numeric" oninput="updateRecFormCost()"></div>
+        <div class="fi full"><label>Preço de venda / dose (€)</label><input id="rf-sell" type="number" step="0.01" inputmode="decimal" placeholder="0.00" oninput="updateRecFormCost()"></div>
+        <div class="fi full"><label>Notas / modo de preparo</label><input id="rf-notes" type="text" placeholder="Opcional"></div>
+      </div>
+
+      <!-- Preview de custos em tempo real -->
+      <div class="card-title" style="margin-bottom:8px">Indicadores em tempo real</div>
+      <div id="rf-cost-preview" style="margin-bottom:14px"></div>
+
+      <!-- Ingredientes -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div class="card-title" style="margin:0">Ingredientes</div>
+        <button class="btn btn-ghost" style="flex:0;padding:7px 12px;font-size:10px" onclick="openAddIngredient()">+ Adicionar</button>
+      </div>
+      <div id="rf-ingredients" style="margin-bottom:10px"></div>
+    </div>
+    <div class="sh-footer">
+      <button class="btn btn-ghost" onclick="closeSheet('m-recipe-form')">Cancelar</button>
+      <button class="btn btn-prim" onclick="saveRecipe()">✓ Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Adicionar Ingrediente -->
+<div class="overlay" id="m-add-ingredient">
+  <div class="sheet">
+    <div class="sh-handle"></div>
+    <div class="sh-hdr"><h3>Adicionar Ingrediente</h3><button class="sh-close" onclick="closeSheet('m-add-ingredient')">✕</button></div>
+    <div class="sh-body">
+      <div class="srch" style="margin-bottom:10px">
+        🔍 <input type="text" id="ing-search" placeholder="Pesquisar artigo..." oninput="searchIngredients()">
+      </div>
+      <div id="ing-results"></div>
+      <div id="ing-qty-row" style="display:none;margin-top:12px;padding:12px;background:var(--s2);border-radius:10px;border:1.5px solid var(--acc)">
+        <p id="ing-selected-name" style="font-size:13px;font-weight:700;margin-bottom:8px"></p>
+        <div class="fi">
+          <label id="ing-qty-label">Quantidade</label>
+          <input id="ing-qty" type="number" step="0.001" inputmode="decimal" placeholder="0.000">
+        </div>
+      </div>
+    </div>
+    <div class="sh-footer">
+      <button class="btn btn-ghost" onclick="closeSheet('m-add-ingredient')">Cancelar</button>
+      <button class="btn btn-prim" onclick="confirmAddIngredient()">+ Adicionar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Alertas de custo de receitas -->
+<div class="overlay" id="m-rec-alert">
+  <div class="sheet">
+    <div class="sh-handle"></div>
+    <div class="sh-hdr"><h3>⚠ Custo de receita alterado</h3><button class="sh-close" onclick="closeSheet('m-rec-alert')">✕</button></div>
+    <div class="sh-body">
+      <p style="font-size:11px;color:var(--t3);margin-bottom:12px">O preço de um ingrediente mudou. Confirma para actualizar os custos das receitas afectadas.</p>
+      <div id="rec-alert-body"></div>
+    </div>
+  </div>
+</div>
+
 
 <div id="toast" class="toast"></div>
 
@@ -10830,6 +10939,7 @@ function goPage(id,btn){
   if(id==='inv'){renderInvFilterChips();renderInvoiceList();}
   if(id==='art'){renderArtFilterChips();renderArticleList();}
   if(id==='alerts')renderAlerts();
+  if(id==='rec')renderRecipeList();
   if(id==='cfg')renderConfig();
 }
 
@@ -10896,6 +11006,7 @@ function renderDash(){
     :'<p style="font-size:12px;color:var(--t3);text-align:center;padding:8px 0">Sem artigos ainda</p>';
 
   // Recentes
+  renderRecipeDash();
   const rec=[...invoices].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,5);
   document.getElementById('recent-list').innerHTML=rec.length
     ?rec.map(invRowHTML).join('')
@@ -11047,16 +11158,38 @@ function openInvoiceForm(data){
     ['Nº Fatura','fi-num','text',data?.num||'',''],
     ['Data','fi-date','date',data?.date||new Date().toISOString().slice(0,10),''],
     ['Total (€)','fi-total','number',data?.total||'',''],
-    ['IVA (€)','fi-vat','number',data?.vat||'',''],
     ['ATCUD','fi-atcud','text',data?.atcud||'','full'],
   ];
+  // Calcula IVA por escalão a partir dos artigos
+  const vatBreakdown=calcVatBreakdown(data?.items||[],data?.vat||0);
   const photoSec=data?.photo?`<div class="fi full" style="margin-bottom:4px">
     <label>FOTO ${data.source==='ocr'?'<span style="color:var(--acc);font-size:9px">✓ OCR</span>':data.source==='qr'?'<span style="color:var(--blue);font-size:9px">✓ QR</span>':''}</label>
     <div style="border-radius:10px;overflow:hidden;border:1px solid var(--b);max-height:160px;position:relative">
       <img src="${data.photo}" style="width:100%;display:block;max-height:160px;object-fit:cover;cursor:zoom-in" onclick="expandPhotoUrl('${data.photo.slice(0,30)}')">
       <div style="position:absolute;bottom:5px;right:5px;background:rgba(0,0,0,.6);border-radius:5px;padding:2px 7px;font-size:9px;color:#fff">🔍 ampliar</div>
     </div></div>`:'';
-  document.getElementById('inv-form-fields').innerHTML=photoSec+fields.map(([lbl,id,type,val,span])=>`<div class="fi ${span}"><label>${lbl}</label><input type="${type}" id="${id}" value="${val}" ${type==='number'?'step="0.01" inputmode="decimal"':''}></div>`).join('');
+  document.getElementById('inv-form-fields').innerHTML=photoSec+fields.map(([lbl,id,type,val,span])=>`<div class="fi ${span}"><label>${lbl}</label><input type="${type}" id="${id}" value="${val}" ${type==='number'?'step="0.01" inputmode="decimal"':''}></div>`).join('')+`
+    <div class="fi full">
+      <label>IVA POR ESCALÃO</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px">
+        <div>
+          <label style="font-size:9px;color:var(--acc)">6% (€)</label>
+          <input type="number" id="fi-vat6" value="${vatBreakdown.vat6.toFixed(2)}" step="0.01" inputmode="decimal" oninput="updateTotalVat()">
+        </div>
+        <div>
+          <label style="font-size:9px;color:var(--warn)">13% (€)</label>
+          <input type="number" id="fi-vat13" value="${vatBreakdown.vat13.toFixed(2)}" step="0.01" inputmode="decimal" oninput="updateTotalVat()">
+        </div>
+        <div>
+          <label style="font-size:9px;color:var(--red)">23% (€)</label>
+          <input type="number" id="fi-vat23" value="${vatBreakdown.vat23.toFixed(2)}" step="0.01" inputmode="decimal" oninput="updateTotalVat()">
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:6px;padding:6px 10px;background:var(--s3);border-radius:7px">
+        <span style="font-size:10px;color:var(--t3)">Total IVA</span>
+        <span id="fi-vat-total" style="font-size:11px;font-weight:700;font-family:var(--mono)">${eur(vatBreakdown.total)}</span>
+      </div>
+    </div>`;
   if(data?.photo)document.getElementById('inv-form-fields').dataset.photo=data.photo;
   renderFormItems();
   document.getElementById('save-inv-btn').onclick=saveInvoice;
@@ -11133,9 +11266,14 @@ function setItemFam(itemId,famId,el){
 async function saveInvoice(){
   const g=id=>document.getElementById(id)?.value?.trim()||'';
   const photo=document.getElementById('inv-form-fields')?.dataset?.photo||null;
+  const vat6=parseFloat(document.getElementById('fi-vat6')?.value)||0;
+  const vat13=parseFloat(document.getElementById('fi-vat13')?.value)||0;
+  const vat23=parseFloat(document.getElementById('fi-vat23')?.value)||0;
+  const totalVat=Math.round((vat6+vat13+vat23)*100)/100;
   const inv={
     id:editInvId||uid(),supplier:g('fi-sup'),nif:g('fi-nif'),num:g('fi-num'),
-    date:g('fi-date'),total:parseFloat(g('fi-total'))||0,vat:parseFloat(g('fi-vat'))||0,
+    date:g('fi-date'),total:parseFloat(g('fi-total'))||0,
+    vat:totalVat,vat6,vat13,vat23,
     atcud:g('fi-atcud'),photo,items:formItems,status:'pendente',
     createdAt:new Date().toISOString()
   };
@@ -11159,12 +11297,38 @@ async function saveInvoice(){
   if(editInvId){const idx=invoices.findIndex(i=>i.id===editInvId);if(idx>=0)invoices[idx]=inv;}
   else invoices.unshift(inv);
   persist();closeSheet('m-invoice');formItems=[];editInvId=null;
+  checkRecipeAlerts(); // Verifica impacto nos custos de receitas
   toast(editInvId?'✏️ Actualizada!':'✅ Fatura guardada!');
   if(priceAlerts.length)setTimeout(()=>openPriceAlertModal(priceAlerts),400);
   renderDash();renderInvoiceList();renderArticleList();
 }
 
 function openManualInvoice(){openInvoiceForm({items:[]});}
+
+function calcVatBreakdown(items, totalVat){
+  let vat6=0,vat13=0,vat23=0;
+  items.forEach(it=>{
+    const base=(it.totalPrice||0)/(1+(it.vatRate||0)/100);
+    const vat=(it.totalPrice||0)-base;
+    if(it.vatRate===6)  vat6 +=vat;
+    else if(it.vatRate===13) vat13+=vat;
+    else if(it.vatRate===23) vat23+=vat;
+  });
+  const total=vat6+vat13+vat23;
+  // Se não há artigos mas há IVA total, usa o valor total
+  if(total<0.01&&totalVat>0) return{vat6:0,vat13:0,vat23:totalVat,total:totalVat};
+  return{vat6:Math.round(vat6*100)/100,vat13:Math.round(vat13*100)/100,
+         vat23:Math.round(vat23*100)/100,total:Math.round(total*100)/100};
+}
+
+function updateTotalVat(){
+  const v6=parseFloat(document.getElementById('fi-vat6')?.value)||0;
+  const v13=parseFloat(document.getElementById('fi-vat13')?.value)||0;
+  const v23=parseFloat(document.getElementById('fi-vat23')?.value)||0;
+  const tot=v6+v13+v23;
+  const el=document.getElementById('fi-vat-total');
+  if(el) el.textContent=eur(tot);
+}
 
 // ── ARTIGOS ──
 function renderArtFilterChips(){
@@ -11245,6 +11409,9 @@ function editArticle(id){
   document.getElementById('ea-name').value=art.name||'';
   document.getElementById('ea-unit').value=art.unit||'un';
   document.getElementById('ea-ean').value=art.ean||'';
+  // Preço actual (último registado)
+  const lastPrice=art.prices.length?art.prices[art.prices.length-1].price:0;
+  document.getElementById('ea-price').value=lastPrice||'';
   document.getElementById('ea-fam-grid').innerHTML=families.map(f=>`
     <div class="fam-pick-opt ${art.famId===f.id?'sel':''}" onclick="setEditArtFam('${id}','${f.id}',this)" style="border-color:${art.famId===f.id?f.color:'var(--b)'}">
       <span style="font-size:18px">${f.icon}</span><span class="fam-pick-name">${f.name}</span>
@@ -11261,7 +11428,28 @@ function saveArticleEdit(){
   art.name=document.getElementById('ea-name').value.trim()||art.name;
   art.unit=document.getElementById('ea-unit').value.trim()||'un';
   art.ean=document.getElementById('ea-ean').value.trim();
-  persist();closeSheet('m-editart');renderArticleList();toast('✅ Artigo actualizado!');editArtId=null;
+  // Actualiza preço se alterado
+  const newPrice=parseFloat(document.getElementById('ea-price').value)||0;
+  if(newPrice>0){
+    const today=new Date().toISOString().slice(0,10);
+    const last=art.prices[art.prices.length-1];
+    if(!last||Math.abs(last.price-newPrice)>0.001){
+      // Verifica alerta de variação
+      if(last&&last.price>0){
+        const change=((newPrice-last.price)/last.price)*100;
+        if(Math.abs(change)>=(config.alertPct||10)){
+          const al={id:uid(),artId:art.id,artName:art.name,
+            oldPrice:last.price,newPrice,pctChange:change,
+            dir:change>0?'up':'down',date:today,invId:'manual',resolved:false};
+          alerts.unshift(al);
+        }
+      }
+      art.prices.push({date:today,price:newPrice,qty:1,invId:'manual'});
+    }
+  }
+  persist();closeSheet('m-editart');renderArticleList();
+  showArticleDetail(editArtId);
+  toast('✅ Artigo actualizado!');editArtId=null;
 }
 
 // ── FUZZY MATCH ──
@@ -11735,17 +11923,25 @@ function extractContinenteItems(lines) {
         totalPrice = pn(qtyM[3]);
         i += 2; // salta linha de quantidade
       } else {
-        // Preço na mesma linha
+        // Preço na mesma linha — para artigos ao KG sem qty discriminada,
+        // o preço é o preço unitário (por kg), qty=1
         totalPrice = priceOnLine;
-        unitPrice = priceOnLine;
+        unitPrice  = priceOnLine;
         qty = 1;
         i++;
       }
 
-      // Detecta quantidade em kg na descrição: "0,510 X 2,99 1,52"
-      if(name.match(/KG$/i)) unit = 'kg';
-      else if(name.match(/\d+[LM][LS]$/i)||name.match(/\d+L$/i)) unit = 'lt';
-      else if(name.match(/\d+G$/i)) unit = 'g';
+      // Detecta unidade pela descrição
+      if(name.match(/\bKG\b/i)||name.match(/\bKGS\b/i)) unit = 'kg';
+      else if(name.match(/\d+[LM][LS]$/i)||name.match(/\d+\s*L$/i)) unit = 'lt';
+      else if(name.match(/\d+\s*G$/i)&&!name.match(/\d+\s*KG/i)) unit = 'g';
+
+      // Artigos ao KG sem quantidade discriminada: qty=1, unitPrice=totalPrice
+      // (preço é o preço por kg — o utilizador pode corrigir a quantidade)
+      if(unit==='kg' && qty===1 && !qtyM) {
+        // já está correcto: unitPrice=totalPrice, qty=1
+        // mas avisa no nome para ser claro
+      }
 
       // Limpa nome
       name = name.replace(/\s+/g,' ').trim();
@@ -12155,8 +12351,424 @@ async function confirmImport(){
   importBatch=[];importItemMatches=[];
 }
 
+// ══════════════════════════════════════════════════════
+// MÓDULO RECEITUÁRIO
+// ══════════════════════════════════════════════════════
+
+let recipes   = LS.get('ss_rec')||[];
+let recFilter = 'todas';
+let editRecId = null;
+let recAlerts = []; // alertas de custo pendentes de confirmação
+
+// Categorias de receitas
+const REC_CATS = [
+  {id:'entrada',  name:'Entrada',    icon:'🥗'},
+  {id:'prato',    name:'Prato',      icon:'🍽'},
+  {id:'sobremesa',name:'Sobremesa',  icon:'🍮'},
+  {id:'base',     name:'Base/Prep.', icon:'🥣'},
+  {id:'bebida',   name:'Bebida',     icon:'🍷'},
+  {id:'outro',    name:'Outro',      icon:'📋'},
+];
+
+function persistRec(){ LS.set('ss_rec',recipes); }
+
+// ── Calcula custo de uma receita ──
+function calcRecipeCost(recipe){
+  let cost = 0;
+  (recipe.ingredients||[]).forEach(ing=>{
+    const art = articles.find(a=>a.id===ing.artId);
+    if(!art||!art.prices.length) return;
+    const lastPrice = art.prices[art.prices.length-1].price;
+    // Custo = preço × quantidade usada
+    // preço é por unidade (kg, lt, un)
+    // quantidade está na unidade do artigo
+    cost += lastPrice * (ing.qty||0);
+  });
+  return Math.round(cost*1000)/1000;
+}
+
+function recipeMargin(recipe){
+  const cost  = calcRecipeCost(recipe);
+  const sell  = recipe.sellPrice||0;
+  const doses = recipe.doses||1;
+  const costPerDose = cost/doses;
+  const profit = sell - costPerDose;
+  const margin = sell>0 ? (profit/sell)*100 : 0;
+  const foodCost = sell>0 ? (costPerDose/sell)*100 : 0;
+  return { cost, costPerDose, sell, profit, margin, foodCost };
+}
+
+// ── Verifica se preços mudaram e cria alertas ──
+function checkRecipeAlerts(){
+  const newAlerts=[];
+  recipes.forEach(rec=>{
+    (rec.ingredients||[]).forEach(ing=>{
+      const art=articles.find(a=>a.id===ing.artId);
+      if(!art||art.prices.length<2)return;
+      const last=art.prices[art.prices.length-1];
+      const prev=art.prices[art.prices.length-2];
+      if(!last||!prev)return;
+      const change=((last.price-prev.price)/prev.price)*100;
+      const threshold=config.alertPct||10;
+      if(Math.abs(change)>=threshold){
+        // Verifica se já há alerta para este par receita/artigo
+        const exists=recAlerts.find(a=>a.recId===rec.id&&a.artId===art.id&&a.newPrice===last.price);
+        if(!exists){
+          newAlerts.push({
+            id:uid(),recId:rec.id,recName:rec.name,
+            artId:art.id,artName:art.name,
+            oldPrice:prev.price,newPrice:last.price,
+            pctChange:change,dir:change>0?'up':'down',
+            date:last.date,confirmed:false
+          });
+        }
+      }
+    });
+  });
+  if(newAlerts.length){
+    recAlerts=[...recAlerts,...newAlerts];
+    // Mostra modal de confirmação
+    setTimeout(()=>showRecipeAlertModal(),500);
+  }
+}
+
+function showRecipeAlertModal(){
+  const pending=recAlerts.filter(a=>!a.confirmed);
+  if(!pending.length)return;
+  const body=pending.map(a=>`
+    <div style="background:var(--s2);border:1px solid var(--b);border-radius:10px;padding:12px;margin-bottom:8px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <span style="font-size:18px">${a.dir==='up'?'📈':'📉'}</span>
+        <div>
+          <p style="font-size:12px;font-weight:700">${a.artName}</p>
+          <p style="font-size:10px;color:var(--t3);font-family:var(--mono)">${eur(a.oldPrice)} → ${eur(a.newPrice)} <span style="color:${a.dir==='up'?'var(--red)':'var(--acc)'}">(${pct(a.pctChange)})</span></p>
+        </div>
+      </div>
+      <p style="font-size:11px;color:var(--t3)">Afecta receita: <strong style="color:var(--t)">${a.recName}</strong></p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px">
+        <button class="btn btn-ghost" style="font-size:10px;padding:8px" onclick="confirmRecAlert('${a.id}',false)">Ignorar</button>
+        <button class="btn btn-prim" style="font-size:10px;padding:8px" onclick="confirmRecAlert('${a.id}',true)">✓ Actualizar receita</button>
+      </div>
+    </div>`).join('');
+  document.getElementById('rec-alert-body').innerHTML=body;
+  openSheet('m-rec-alert');
+}
+
+function confirmRecAlert(id,accept){
+  const a=recAlerts.find(x=>x.id===id);
+  if(a){
+    a.confirmed=true;
+    if(accept){
+      // Actualiza custo da receita (automático — usa sempre último preço)
+      toast('✅ Receita "'+a.recName+'" actualizada com novo preço de '+a.artName);
+      renderRecipeList();
+    }
+  }
+  // Verifica se há mais pendentes
+  const pending=recAlerts.filter(x=>!x.confirmed);
+  if(pending.length){
+    showRecipeAlertModal();
+  } else {
+    closeSheet('m-rec-alert');
+  }
+}
+
+// ── LISTA DE RECEITAS ──
+function renderRecipeList(){
+  const q=(document.getElementById('rec-srch')?.value||'').toLowerCase();
+  let list=recipes.filter(r=>{
+    const ms=!q||(r.name||'').toLowerCase().includes(q);
+    const mf=recFilter==='todas'||r.cat===recFilter;
+    return ms&&mf;
+  }).sort((a,b)=>a.name.localeCompare(b.name));
+
+  document.getElementById('rec-filter-chips').innerHTML=
+    [{id:'todas',name:'Todas',icon:''},...REC_CATS].map(c=>`
+      <div class="chip ${recFilter===c.id?'on':''}" onclick="setRecFilter('${c.id}')">${c.icon} ${c.name}</div>`).join('');
+
+  const wrap=document.getElementById('rec-list');
+  if(!list.length){
+    wrap.innerHTML=`<div class="empty"><div class="ei">📋</div><p><strong>${recipes.length?'Sem resultados':'Nenhuma receita'}</strong>${recipes.length?'':'Cria a tua primeira receita.'}</p></div>`;
+    return;
+  }
+  wrap.innerHTML=list.map(rec=>{
+    const m=recipeMargin(rec);
+    const cat=REC_CATS.find(c=>c.id===rec.cat)||REC_CATS[5];
+    const fcColor=m.foodCost>35?'var(--red)':m.foodCost>28?'var(--warn)':'var(--acc)';
+    return`<div class="exp-item" onclick="showRecipeDetail('${rec.id}')">
+      <div class="exp-ico" style="background:var(--s2)">${cat.icon}</div>
+      <div class="exp-mid">
+        <div class="exp-name">${rec.name}</div>
+        <div class="exp-meta">${cat.name} · ${(rec.ingredients||[]).length} ingredientes · ${rec.doses||1} dose${(rec.doses||1)!==1?'s':''}</div>
+      </div>
+      <div class="exp-r">
+        <div class="exp-val">${eur(m.costPerDose)}<span style="font-size:9px;color:var(--t3)">/dose</span></div>
+        <div style="font-size:9px;font-weight:700;color:${fcColor}">${m.foodCost.toFixed(1)}% FC</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function setRecFilter(f){recFilter=f;renderRecipeList();}
+
+// ── DETALHE DE RECEITA ──
+function showRecipeDetail(id){
+  const rec=recipes.find(r=>r.id===id);if(!rec)return;
+  const m=recipeMargin(rec);
+  const cat=REC_CATS.find(c=>c.id===rec.cat)||REC_CATS[5];
+  const fcColor=m.foodCost>35?'var(--red)':m.foodCost>28?'var(--warn)':'var(--acc)';
+
+  document.getElementById('d-rec-name').textContent=rec.name;
+
+  // Cards de indicadores
+  const indicators=`
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+      <div class="stat b"><div class="stat-lbl">Custo total</div><div class="stat-val" style="font-size:16px">${eur(m.cost)}</div><div class="stat-sub">${rec.doses||1} dose${(rec.doses||1)!==1?'s':''}</div></div>
+      <div class="stat g"><div class="stat-lbl">Custo/dose</div><div class="stat-val" style="font-size:16px">${eur(m.costPerDose)}</div><div class="stat-sub">&nbsp;</div></div>
+      <div class="stat ${m.profit>=0?'g':'r'}"><div class="stat-lbl">Lucro/dose</div><div class="stat-val" style="font-size:16px">${eur(m.profit)}</div><div class="stat-sub">&nbsp;</div></div>
+      <div class="stat ${m.foodCost>35?'r':m.foodCost>28?'y':'g'}"><div class="stat-lbl">Food Cost</div><div class="stat-val" style="font-size:16px">${m.foodCost.toFixed(1)}%</div><div class="stat-sub">margem ${m.margin.toFixed(1)}%</div></div>
+    </div>`;
+
+  // Barra visual food cost
+  const fcBar=`
+    <div style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+        <span style="font-size:10px;color:var(--t3)">Food Cost</span>
+        <span style="font-size:10px;font-weight:700;color:${fcColor}">${m.foodCost.toFixed(1)}%</span>
+      </div>
+      <div style="height:6px;background:var(--s3);border-radius:3px;position:relative">
+        <div style="height:6px;border-radius:3px;background:${fcColor};width:${Math.min(m.foodCost,100).toFixed(1)}%;transition:.4s"></div>
+        <!-- Referência 30% -->
+        <div style="position:absolute;top:-3px;left:30%;width:2px;height:12px;background:var(--warn);border-radius:1px"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:2px">
+        <span style="font-size:9px;color:var(--t3)">0%</span>
+        <span style="font-size:9px;color:var(--warn)">30% (ref.)</span>
+        <span style="font-size:9px;color:var(--t3)">100%</span>
+      </div>
+    </div>`;
+
+  // Ingredientes
+  const ingList=(rec.ingredients||[]).map(ing=>{
+    const art=articles.find(a=>a.id===ing.artId);
+    const lastPrice=art?.prices[art.prices.length-1]?.price||0;
+    const ingCost=lastPrice*(ing.qty||0);
+    const fam=art?famById(art.famId):{icon:'📦',color:'#888'};
+    return`<div style="display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px solid var(--b)">
+      <span style="font-size:16px">${fam.icon}</span>
+      <div style="flex:1">
+        <p style="font-size:12px;font-weight:700">${art?.name||ing.artName||'Artigo eliminado'}</p>
+        <p style="font-size:10px;color:var(--t3);font-family:var(--mono)">${ing.qty} ${art?.unit||ing.unit||'un'} × ${eur(lastPrice)}</p>
+      </div>
+      <span style="font-size:12px;font-weight:700;font-family:var(--mono)">${eur(ingCost)}</span>
+    </div>`;
+  }).join('');
+
+  document.getElementById('d-rec-body').innerHTML=
+    indicators+fcBar+
+    (rec.notes?`<div class="card" style="margin-bottom:12px"><div class="card-title">Notas</div><p style="font-size:12px;line-height:1.6;color:var(--t2)">${rec.notes}</p></div>`:'')
+    +`<div class="card-title" style="margin-bottom:8px">Ingredientes (${(rec.ingredients||[]).length})</div>`
+    +ingList;
+
+  // Footer
+  const footer=document.getElementById('d-rec-footer');footer.innerHTML='';
+  const del=document.createElement('button');del.className='btn btn-danger';del.textContent='🗑';del.style.flex='0';del.style.padding='11px 14px';
+  del.onclick=()=>{if(!confirm('Eliminar receita?'))return;recipes=recipes.filter(r=>r.id!==id);persistRec();closeSheet('m-recdetail');toast('🗑 Eliminada');renderRecipeList();renderDash();};
+  const edit=document.createElement('button');edit.className='btn btn-ghost';edit.textContent='✏️ Editar';
+  edit.onclick=()=>{closeSheet('m-recdetail');openRecipeForm(recipes.find(r=>r.id===id));};
+  footer.appendChild(del);footer.appendChild(edit);
+  openSheet('m-recdetail');
+}
+
+// ── FORMULÁRIO DE RECEITA ──
+let recFormIngredients=[];
+
+function openRecipeForm(rec){
+  editRecId=rec?.id||null;
+  recFormIngredients=(rec?.ingredients||[]).map(i=>({...i}));
+  document.getElementById('m-rec-title').textContent=editRecId?'Editar Receita':'Nova Receita';
+  document.getElementById('rf-name').value=rec?.name||'';
+  document.getElementById('rf-cat').value=rec?.cat||'prato';
+  document.getElementById('rf-doses').value=rec?.doses||1;
+  document.getElementById('rf-sell').value=rec?.sellPrice||'';
+  document.getElementById('rf-notes').value=rec?.notes||'';
+  renderRecFormIngredients();
+  updateRecFormCost();
+  openSheet('m-recipe-form');
+}
+
+function renderRecFormIngredients(){
+  const wrap=document.getElementById('rf-ingredients');
+  if(!recFormIngredients.length){
+    wrap.innerHTML=`<div style="text-align:center;padding:12px;color:var(--t3);font-size:11px">Sem ingredientes. Adiciona abaixo.</div>`;
+    return;
+  }
+  wrap.innerHTML=recFormIngredients.map((ing,i)=>{
+    const art=articles.find(a=>a.id===ing.artId);
+    const lastPrice=art?.prices[art.prices.length-1]?.price||0;
+    const cost=lastPrice*(ing.qty||0);
+    return`<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--b)">
+      <div style="flex:1;min-width:0">
+        <p style="font-size:12px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${art?.name||ing.artName}</p>
+        <p style="font-size:10px;color:var(--t3);font-family:var(--mono)">${ing.qty} ${art?.unit||ing.unit||'un'} = ${eur(cost)}</p>
+      </div>
+      <input type="number" value="${ing.qty}" step="0.001" inputmode="decimal"
+        style="width:70px;background:var(--s2);border:1px solid var(--b);border-radius:7px;padding:6px 8px;color:var(--t);font-size:12px;font-family:var(--mono);text-align:right"
+        onchange="updateIngQty(${i},this.value)">
+      <button class="btn-icon-sm" onclick="removeIngredient(${i})">🗑</button>
+    </div>`;
+  }).join('');
+}
+
+function updateIngQty(idx,val){
+  recFormIngredients[idx].qty=parseFloat(val)||0;
+  updateRecFormCost();
+}
+function removeIngredient(idx){
+  recFormIngredients.splice(idx,1);
+  renderRecFormIngredients();
+  updateRecFormCost();
+}
+
+function updateRecFormCost(){
+  let cost=0;
+  recFormIngredients.forEach(ing=>{
+    const art=articles.find(a=>a.id===ing.artId);
+    const p=art?.prices[art.prices.length-1]?.price||0;
+    cost+=p*(ing.qty||0);
+  });
+  const doses=parseInt(document.getElementById('rf-doses')?.value)||1;
+  const sell=parseFloat(document.getElementById('rf-sell')?.value)||0;
+  const costPerDose=cost/doses;
+  const fc=sell>0?(costPerDose/sell*100):0;
+  const profit=sell-costPerDose;
+  const el=document.getElementById('rf-cost-preview');
+  if(el) el.innerHTML=`
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px">
+      <div style="text-align:center;background:var(--s2);border-radius:8px;padding:8px">
+        <div style="font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.7px">Custo total</div>
+        <div style="font-size:13px;font-weight:800;font-family:var(--mono)">${eur(cost)}</div>
+      </div>
+      <div style="text-align:center;background:var(--s2);border-radius:8px;padding:8px">
+        <div style="font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.7px">Custo/dose</div>
+        <div style="font-size:13px;font-weight:800;font-family:var(--mono)">${eur(costPerDose)}</div>
+      </div>
+      <div style="text-align:center;background:${profit>=0?'var(--acc-dim)':'var(--red-dim)'};border-radius:8px;padding:8px">
+        <div style="font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.7px">Lucro/dose</div>
+        <div style="font-size:13px;font-weight:800;font-family:var(--mono);color:${profit>=0?'var(--acc)':'var(--red)'}">${eur(profit)}</div>
+      </div>
+      <div style="text-align:center;background:${fc>35?'var(--red-dim)':fc>28?'var(--warn-dim)':'var(--acc-dim)'};border-radius:8px;padding:8px">
+        <div style="font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.7px">Food Cost</div>
+        <div style="font-size:13px;font-weight:800;font-family:var(--mono);color:${fc>35?'var(--red)':fc>28?'var(--warn)':'var(--acc)'}">${fc.toFixed(1)}%</div>
+      </div>
+    </div>`;
+}
+
+// Pesquisa de artigos para adicionar à receita
+function openAddIngredient(){
+  document.getElementById('ing-search').value='';
+  document.getElementById('ing-qty-row').style.display='none';
+  document.getElementById('ing-results').innerHTML='';
+  openSheet('m-add-ingredient');
+}
+
+function searchIngredients(){
+  const q=document.getElementById('ing-search').value.toLowerCase().trim();
+  const wrap=document.getElementById('ing-results');
+  if(!q){wrap.innerHTML='';return;}
+  const results=articles.filter(a=>(a.name||'').toLowerCase().includes(q)).slice(0,10);
+  if(!results.length){wrap.innerHTML=`<p style="font-size:11px;color:var(--t3);text-align:center;padding:10px">Sem artigos. Importa faturas primeiro.</p>`;return;}
+  wrap.innerHTML=results.map(a=>{
+    const last=a.prices[a.prices.length-1]?.price||0;
+    return`<div style="display:flex;align-items:center;gap:9px;padding:10px;background:var(--s2);border-radius:10px;margin-bottom:6px;cursor:pointer" onclick="selectIngredient('${a.id}')">
+      <span style="font-size:18px">${famById(a.famId).icon}</span>
+      <div style="flex:1">
+        <p style="font-size:13px;font-weight:700">${a.name}</p>
+        <p style="font-size:10px;color:var(--t3);font-family:var(--mono)">${eur(last)}/${a.unit||'un'}</p>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+let _selectedIngArtId=null;
+function selectIngredient(artId){
+  _selectedIngArtId=artId;
+  const art=articles.find(a=>a.id===artId);if(!art)return;
+  document.getElementById('ing-qty-label').textContent='Quantidade ('+( art.unit||'un')+')';
+  document.getElementById('ing-qty').value='';
+  document.getElementById('ing-qty-row').style.display='block';
+  document.getElementById('ing-selected-name').textContent=art.name;
+  // Highlight
+  document.querySelectorAll('#ing-results > div').forEach(el=>{
+    el.style.borderColor='var(--b)';el.style.background='var(--s2)';
+  });
+  event?.currentTarget?.style && (event.currentTarget.style.borderColor='var(--acc)');
+}
+
+function confirmAddIngredient(){
+  if(!_selectedIngArtId)return;
+  const art=articles.find(a=>a.id===_selectedIngArtId);if(!art)return;
+  const qty=parseFloat(document.getElementById('ing-qty').value)||0;
+  if(qty<=0){toast('⚠ Insere a quantidade','err');return;}
+  recFormIngredients.push({artId:art.id,artName:art.name,unit:art.unit||'un',qty});
+  _selectedIngArtId=null;
+  closeSheet('m-add-ingredient');
+  renderRecFormIngredients();
+  updateRecFormCost();
+  toast('✅ '+art.name+' adicionado');
+}
+
+function saveRecipe(){
+  const name=document.getElementById('rf-name').value.trim();
+  if(!name){toast('⚠ Insere o nome da receita','err');return;}
+  const rec={
+    id:editRecId||uid(),
+    name,
+    cat:document.getElementById('rf-cat').value,
+    doses:parseInt(document.getElementById('rf-doses').value)||1,
+    sellPrice:parseFloat(document.getElementById('rf-sell').value)||0,
+    notes:document.getElementById('rf-notes').value.trim(),
+    ingredients:recFormIngredients,
+    createdAt:new Date().toISOString()
+  };
+  if(editRecId){const idx=recipes.findIndex(r=>r.id===editRecId);if(idx>=0)recipes[idx]=rec;}
+  else recipes.push(rec);
+  persistRec();
+  closeSheet('m-recipe-form');
+  recFormIngredients=[];editRecId=null;
+  renderRecipeList();renderDash();
+  toast(editRecId?'✏️ Receita actualizada!':'✅ Receita criada!');
+}
+
+// ── Dashboard: top receitas por food cost ──
+function renderRecipeDash(){
+  const el=document.getElementById('dash-recipes');if(!el)return;
+  if(!recipes.length){el.innerHTML='';return;}
+  const sorted=recipes.map(r=>({...r,m:recipeMargin(r)})).sort((a,b)=>b.m.foodCost-a.m.foodCost).slice(0,4);
+  el.innerHTML=`<div class="card">
+    <div class="card-title">Receitas — Food Cost</div>
+    ${sorted.map(r=>{
+      const fcColor=r.m.foodCost>35?'var(--red)':r.m.foodCost>28?'var(--warn)':'var(--acc)';
+      const cat=REC_CATS.find(c=>c.id===r.cat)||REC_CATS[5];
+      return`<div style="display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px solid var(--b);cursor:pointer" onclick="goPage('rec',document.getElementById('bn-rec'));showRecipeDetail('${r.id}')">
+        <span style="font-size:16px">${cat.icon}</span>
+        <div style="flex:1;min-width:0">
+          <p style="font-size:12px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.name}</p>
+          <p style="font-size:10px;color:var(--t3);font-family:var(--mono)">${eur(r.m.costPerDose)}/dose · PV ${eur(r.m.sell)}</p>
+        </div>
+        <div style="text-align:right">
+          <p style="font-size:12px;font-weight:800;color:${fcColor}">${r.m.foodCost.toFixed(1)}%</p>
+          <p style="font-size:9px;color:${r.m.profit>=0?'var(--acc)':'var(--red)'}">${r.m.profit>=0?'+':''}${eur(r.m.profit)}</p>
+        </div>
+      </div>`;
+    }).join('')}
+    <button class="btn btn-ghost" style="width:100%;margin-top:8px;font-size:10px" onclick="goPage('rec',document.getElementById('bn-rec'))">Ver todas →</button>
+  </div>`;
+}
+
+
 // ── INIT ──
-console.log('StockScan v5 carregado OK');
+console.log('StockScan v6 receituário carregado');
 renderDash();
 renderInvFilterChips();
 renderArtFilterChips();
