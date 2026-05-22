@@ -549,6 +549,7 @@ header{
     <div class="sh-handle"></div>
     <div class="sh-hdr"><h3 id="d-art-name">Artigo</h3><button class="sh-close" onclick="closeSheet('m-artdetail')">✕</button></div>
     <div class="sh-body" id="d-art-body"></div>
+    <div class="sh-footer" id="d-art-footer"></div>
   </div>
 </div>
 
@@ -11266,6 +11267,18 @@ function setItemFam(itemId,famId,el){
 async function saveInvoice(){
   const g=id=>document.getElementById(id)?.value?.trim()||'';
   const photo=document.getElementById('inv-form-fields')?.dataset?.photo||null;
+  // Verifica fatura duplicada (mesmo NIF + mesmo número)
+  const nifVal=document.getElementById('fi-nif')?.value?.trim()||'';
+  const numVal=document.getElementById('fi-num')?.value?.trim()||'';
+  if(!editInvId && nifVal && numVal){
+    const dup=invoices.find(i=>
+      i.nif===nifVal && i.num===numVal
+    );
+    if(dup){
+      toast('⚠ Fatura '+numVal+' deste fornecedor já existe! ('+fdate(dup.date)+')','err',5000);
+      return;
+    }
+  }
   const vat6=parseFloat(document.getElementById('fi-vat6')?.value)||0;
   const vat13=parseFloat(document.getElementById('fi-vat13')?.value)||0;
   const vat23=parseFloat(document.getElementById('fi-vat23')?.value)||0;
@@ -11400,6 +11413,28 @@ function showArticleDetail(id){
           <span style="font-size:13px;font-weight:700;font-family:var(--mono)">${eur(p.price)}</span>
         </div>
       </div>`).join('')}`;
+  // Footer com botão apagar
+  const artFooter=document.getElementById('d-art-footer');
+  if(artFooter){
+    artFooter.innerHTML='';
+    const delBtn=document.createElement('button');
+    delBtn.className='btn btn-danger';delBtn.textContent='🗑 Eliminar artigo';
+    delBtn.onclick=()=>{
+      const art=articles.find(a=>a.id===id);
+      const usedInRecipes=recipes.filter(r=>(r.ingredients||[]).some(i=>i.artId===id));
+      let msg='Eliminar "'+( art?.name||'artigo')+'"?';
+      if(usedInRecipes.length) msg+='\n\n⚠ Usado em '+usedInRecipes.length+' receita(s): '+usedInRecipes.map(r=>r.name).join(', ');
+      if(!confirm(msg))return;
+      articles=articles.filter(a=>a.id!==id);
+      // Remove também das receitas
+      recipes.forEach(r=>{r.ingredients=(r.ingredients||[]).filter(i=>i.artId!==id);});
+      persist();persistRec();
+      closeSheet('m-artdetail');
+      renderArticleList();renderDash();
+      toast('🗑 Artigo eliminado');
+    };
+    artFooter.appendChild(delBtn);
+  }
   openSheet('m-artdetail');
 }
 
@@ -12341,6 +12376,11 @@ async function confirmImport(){
         art.prices.push({date:inv.date||new Date().toISOString().slice(0,10),price:item.unitPrice,qty:item.qty||1,invId});
       }
       item.famId=art?.famId||'';processedItems.push(item);
+    }
+    // Verifica duplicado antes de guardar
+    if(inv.nif&&inv.num){
+      const dup=invoices.find(i=>i.nif===inv.nif&&i.num===inv.num);
+      if(dup){toast('⚠ Fatura '+inv.num+' já existe — ignorada.','err',4000);continue;}
     }
     invoices.unshift({id:invId,supplier:inv.supplier||'',nif:inv.nif||'',num:inv.num||'IMP/'+invId.slice(-6),date:inv.date||new Date().toISOString().slice(0,10),total:inv.total||0,vat:inv.vat||0,atcud:inv.atcud||'',photo:inv.photo||null,items:processedItems,status:'pendente',createdAt:new Date().toISOString(),source:'import'});
     savedInv++;
