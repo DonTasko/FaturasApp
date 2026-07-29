@@ -432,7 +432,14 @@ header{
         <div class="fi full"><label>Nome da empresa</label><input id="cfg-biz" type="text" placeholder="Don Tasko Lda."></div>
         <div class="fi full"><label>NIF</label><input id="cfg-nif" type="text" inputmode="numeric" placeholder="509 000 000"></div>
         <div class="fi full"><label>Limiar de alerta (%)</label><input id="cfg-alert-pct" type="number" min="1" max="100" step="1" inputmode="decimal" placeholder="10"></div>
-        <div class="fi full"><label>API Key Anthropic (opcional)</label><input id="cfg-apikey" type="password" placeholder="sk-ant-... (deixe vazio para usar proxy)"></div>
+        <div class="fi full">
+          <label>API Key Google Gemini</label>
+          <input id="cfg-geminikey" type="password" placeholder="AIza... (gratuita em aistudio.google.com)">
+        </div>
+        <div class="fi full">
+          <label>API Key Anthropic Claude (opcional)</label>
+          <input id="cfg-apikey" type="password" placeholder="sk-ant-... (fallback se Gemini falhar)">
+        </div>
       </div>
       <button class="btn btn-prim" style="width:100%" onclick="saveCfg()">Guardar configurações</button>
     </div>
@@ -10885,7 +10892,7 @@ const LS={
 let invoices=LS.get('ss_inv')||[];
 let articles=LS.get('ss_art')||[];
 let families=LS.get('ss_fam')||defFam();
-let config=LS.get('ss_cfg')||{biz:'',nif:'',alertPct:10,apiKey:''};
+let config=LS.get('ss_cfg')||{biz:'',nif:'',alertPct:10,apiKey:'',geminiKey:''};
 let alerts=LS.get('ss_alerts')||[];
 let camStream=null,camAF=null,camFacing='environment',camMode='qr';
 let editInvId=null,editArtId=null,editFamId=null;
@@ -11553,10 +11560,11 @@ function renderConfig(){
   document.getElementById('cfg-nif').value=config.nif||'';
   document.getElementById('cfg-alert-pct').value=config.alertPct||10;
   document.getElementById('cfg-apikey').value=config.apiKey||'';
+  document.getElementById('cfg-geminikey').value=config.geminiKey||'';
   document.getElementById('cfg-counts').textContent=`${invoices.length} faturas · ${articles.length} artigos · ${alerts.filter(a=>!a.resolved).length} alertas activos`;
   renderFamilyList();
 }
-function saveCfg(){config.biz=document.getElementById('cfg-biz').value.trim();config.nif=document.getElementById('cfg-nif').value.trim();config.alertPct=parseFloat(document.getElementById('cfg-alert-pct').value)||10;config.apiKey=document.getElementById('cfg-apikey').value.trim();persist();toast('✅ Guardado!');}
+function saveCfg(){config.biz=document.getElementById('cfg-biz').value.trim();config.nif=document.getElementById('cfg-nif').value.trim();config.alertPct=parseFloat(document.getElementById('cfg-alert-pct').value)||10;config.apiKey=document.getElementById('cfg-apikey').value.trim();config.geminiKey=document.getElementById('cfg-geminikey').value.trim();persist();toast('✅ Guardado!');}
 function renderFamilyList(){
   document.getElementById('fam-list').innerHTML=families.map(f=>`
     <div class="cat-row">
@@ -12085,6 +12093,12 @@ async function callClaudeText(pdfText,filename){
     console.warn('PDF sem texto suficiente:',pdfText?.length);
     return null;
   }
+  // Tenta Gemini primeiro
+  if(config.geminiKey){
+    const r=await callGeminiText(pdfText);
+    if(r&&r.items.length>0){console.log('Gemini texto: '+r.items.length+' artigos');return r;}
+    console.log('Gemini sem artigos no texto, a tentar Claude...');
+  }
   const prompt=`Fatura portuguesa de fornecedor alimentar (ex: Makro, Metro, Recheio).
 Texto extraído do PDF:
 ---
@@ -12251,43 +12265,75 @@ function switchCam(){camFacing=camFacing==='environment'?'user':'environment';st
 
 // ── OCR CLAUDE API ──
 async function callClaudeOCR(base64DataUrl,qrData=null){
+  // Tenta Gemini primeiro (gratuito, mais rápido)
+  if(config.geminiKey){
+    const r=await callGeminiOCR(base64DataUrl,qrData);
+    if(r&&r.items.length>0){console.log('Gemini OCR: '+r.items.length+' artigos');return r;}
+    console.log('Gemini sem artigos, a tentar Claude...');
+  }
+  // Fallback Claude
   const base64=base64DataUrl.split(',')[1];
   const qrCtx=qrData?'\nQR:nif='+qrData.nif+',num='+qrData.num+',date='+qrData.date+',total='+qrData.total+',vat='+qrData.vat:'';
   const prompt='Fatura portuguesa. JSON compacto sem markdown.'+qrCtx+'\nFormato:{"supplier":"","nif":"","nifClient":"","num":"","date":"YYYY-MM-DD","total":0,"vat":0,"atcud":"","items":[{"name":"","qty":1,"unit":"kg","unitPrice":0,"totalPrice":0,"vatRate":6}]}\nRegras: TODOS os artigos; unit=kg/un/L/cx/g/lt; sem serviços.';
   return _claudeCall('claude-haiku-4-5-20251001',1500,base64,prompt);
 }
 
+// ── Motor OCR unificado: Gemini (primário) → Claude (fallback) ──
+
+async function callGeminiOCR(base64DataUrl, qrData){
+  const key=config.geminiKey||'';
+  if(!key) return null;
+  const base64=base64DataUrl.split(',')[1];
+  const qrCtx=qrData?'\nQR Code AT: nif='+qrData.nif+', num='+qrData.num+', date='+qrData.date+', total='+qrData.total:'';
+  const prompt='Fatura portuguesa de fornecedor. JSON compacto sem markdown.'+qrCtx+'\nFormato:{"supplier":"","nif":"","nifClient":"","num":"","date":"YYYY-MM-DD","total":0,"vat":0,"atcud":"","items":[{"name":"","qty":1,"unit":"kg","unitPrice":0,"totalPrice":0,"vatRate":6}]}\nTODOS os artigos. unit=kg/un/L/cx/g/lt. Sem taxas/portes.';
+  return _geminiCall(key, base64, 'image/jpeg', prompt);
+}
+
+async function callGeminiText(pdfText){
+  const key=config.geminiKey||'';
+  if(!key) return null;
+  const prompt='Fatura portuguesa em texto. JSON compacto sem markdown.\nTexto:\n---\n'+pdfText.slice(0,7000)+'\n---\nFormato:{"supplier":"","nif":"","nifClient":"","num":"","date":"YYYY-MM-DD","total":0,"vat":0,"atcud":"","items":[{"name":"","qty":1,"unit":"kg","unitPrice":0,"totalPrice":0,"vatRate":6}]}\nTODOS os artigos. unit=kg/un/L/cx/g/lt. Sem taxas/portes.';
+  return _geminiCall(key, null, null, prompt);
+}
+
+async function _geminiCall(key, base64, mimeType, prompt){
+  try{
+    const t0=Date.now();
+    const model='gemini-3.5-flash';
+    const url='https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent?key='+key;
+    const parts=[];
+    if(base64) parts.push({inlineData:{mimeType,data:base64}});
+    parts.push({text:prompt});
+    const res=await fetch(url,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({contents:[{parts}],
+        generationConfig:{temperature:0.1,maxOutputTokens:2000}})
+    });
+    const data=await res.json();
+    console.log('Gemini em '+((Date.now()-t0)/1000).toFixed(1)+'s');
+    if(data.error){console.error('Gemini error:',data.error);return null;}
+    const text=data.candidates?.[0]?.content?.parts?.[0]?.text||'';
+    return parseJSON(text);
+  }catch(e){console.error('_geminiCall:',e);return null;}
+}
+
 async function _claudeCall(model,maxTokens,base64,prompt){
+  const apiKey=config.apiKey||'';
+  if(!apiKey) return null;
   try{
     const content=base64
       ?[{type:'image',source:{type:'base64',media_type:'image/jpeg',data:base64}},{type:'text',text:prompt}]
       :[{type:'text',text:prompt}];
     const t0=Date.now();
-
-    // Usa API key própria se definida nas configurações
-    const apiKey=config.apiKey||'';
-    if(apiKey){
-      const res=await fetch('https://api.anthropic.com/v1/messages',{
-        method:'POST',
-        headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01'},
-        body:JSON.stringify({model,max_tokens:maxTokens,messages:[{role:'user',content}]})
-      });
-      const data=await res.json();
-      console.log('OCR '+model+' em '+((Date.now()-t0)/1000).toFixed(1)+'s');
-      if(data.error){console.error('API:',data.error);return null;}
-      const text=data.content?.[0]?.text||'';
-      return parseJSON(text);
-    }
-
-    // Sem API key — usa fetch à API de artefactos (Claude.ai built-in)
     const res=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
-      headers:{'Content-Type':'application/json'},
+      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01'},
       body:JSON.stringify({model,max_tokens:maxTokens,messages:[{role:'user',content}]})
     });
     const data=await res.json();
-    console.log('OCR '+model+' em '+((Date.now()-t0)/1000).toFixed(1)+'s');
-    if(data.error){console.error('API:',data.error);toast('⚠ API: '+JSON.stringify(data.error),'err',8000);return null;}
+    console.log('Claude '+model+' em '+((Date.now()-t0)/1000).toFixed(1)+'s');
+    if(data.error){console.error('Claude error:',data.error);return null;}
     const text=data.content?.[0]?.text||'';
     return parseJSON(text);
   }catch(e){console.error('_claudeCall:',e);return null;}
