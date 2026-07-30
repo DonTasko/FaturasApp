@@ -366,6 +366,58 @@ header{
 @media(min-width:480px){body{box-shadow:0 0 80px rgba(203,255,77,.05)}}
 
 </style>
+<script>
+// Detecta altura real da barra de navegação Android e aplica ao CSS
+(function(){
+  function applyNavHeight(){
+    // Diferença entre altura total do ecrã e área visível
+    const navH = window.screen.height - window.innerHeight;
+    const safeH = Math.max(navH, 0);
+    console.log('Nav bar height detected:', safeH, 'px');
+    
+    const root = document.documentElement;
+    root.style.setProperty('--nav-h', safeH + 'px');
+    root.style.setProperty('--nav-pad', (safeH + 16) + 'px');
+    root.style.setProperty('--nav-total', (safeH + 76) + 'px');
+    
+    // Aplica directamente aos elementos críticos
+    const main = document.getElementById('main-scroll');
+    if(main) main.style.paddingBottom = (safeH + 80) + 'px';
+    
+    const botNav = document.querySelector('.bot-nav');
+    if(botNav) botNav.style.paddingBottom = Math.max(safeH - 40, 8) + 'px';
+    
+    const toast = document.getElementById('toast');
+    if(toast) toast.style.bottom = (safeH + 90) + 'px';
+    
+    // Sheets — padding-bottom para conteúdo não ficar tapado
+    document.querySelectorAll('.sheet').forEach(s=>{
+      s.style.paddingBottom = (safeH + 80) + 'px';
+    });
+    
+    // sh-footer sticky — garante que fica acima da barra
+    document.querySelectorAll('.sh-footer').forEach(f=>{
+      f.style.paddingBottom = (safeH + 12) + 'px';
+    });
+    
+    // Cam bottom
+    const camBottom = document.querySelector('.cam-bottom');
+    if(camBottom) camBottom.style.bottom = (safeH + 20) + 'px';
+  }
+  
+  // Aplica quando DOM estiver pronto
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', applyNavHeight);
+  } else {
+    applyNavHeight();
+  }
+  // Re-aplica se o tamanho mudar (rotação, teclado)
+  window.addEventListener('resize', applyNavHeight);
+  // Re-aplica após 500ms para garantir (WebView pode demorar)
+  setTimeout(applyNavHeight, 500);
+  setTimeout(applyNavHeight, 1500);
+})();
+</script>
 </head>
 <body>
 
@@ -10931,7 +10983,15 @@ function toast(msg,dur=3000,type=''){
   t._t=setTimeout(()=>t.style.display='none',dur);
 }
 function vib(ms=100){try{navigator.vibrate&&navigator.vibrate(ms)}catch(_){}}
-function openSheet(id){document.getElementById(id).classList.add('on')}
+function openSheet(id){
+  const el=document.getElementById(id);
+  if(!el)return;
+  el.classList.add('on');
+  // Reaplica padding da barra Android ao abrir
+  const navH=Math.max(window.screen.height-window.innerHeight,0);
+  el.querySelectorAll('.sh-footer').forEach(f=>f.style.paddingBottom=(navH+12)+'px');
+  el.style.paddingBottom=(navH+80)+'px';
+}
 function closeSheet(id){document.getElementById(id).classList.remove('on')}
 function showOCRLoading(show){
   document.getElementById('ocr-loading').style.display=show?'flex':'none';
