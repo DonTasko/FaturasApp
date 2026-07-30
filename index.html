@@ -511,7 +511,7 @@ header{
   <div class="cam-bottom">
     <p id="cam-hint">APONTE PARA O QR CODE AT</p>
     <p id="cam-st"></p>
-    <button class="cam-shutter" id="cam-shutter" style="display:none" onclick="captureAndOCR()">📷</button>
+    <button class="cam-shutter" id="cam-shutter" style="display:none" onclick="captureOrFallback()">📷</button>
     <button style="background:rgba(203,255,77,.12);border:1px solid rgba(203,255,77,.25);color:var(--acc);padding:10px 22px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--display);letter-spacing:.8px;text-transform:uppercase" onclick="closeCam();openManualInvoice()">✏ Manual</button>
   </div>
 </div>
@@ -12159,7 +12159,42 @@ async function startCam(){
     if(adv.length)await tk.applyConstraints({advanced:adv});
   }catch(_){}
   if(camMode==='qr'||camMode==='sync-qr')startQREngine();
+
+  // Detecta ecrã preto — WebIntoApp não passa stream à WebView
+  setTimeout(()=>{
+    const v=document.getElementById('cam-video');
+    if(!v||!camStream)return;
+    if((v.videoWidth||0)<10){
+      console.warn('Câmara sem stream — fallback activado');
+      stopCam();
+      document.getElementById('cam-wrap').classList.remove('on');
+      useCameraFallback();
+    }
+  },2500);
 }
+
+// Tenta ler QR Code de uma imagem estática (fallback WebView)
+function tryReadQRFromImage(dataUrl){
+  const img=new Image();
+  img.onload=()=>{
+    const c=document.createElement('canvas');
+    c.width=img.width;c.height=img.height;
+    const ctx=c.getContext('2d');ctx.drawImage(img,0,0);
+    const raw=ctx.getImageData(0,0,c.width,c.height);
+    const tryJsQR=()=>{
+      const code=jsQR(raw.data,c.width,c.height,{inversionAttempts:'attemptBoth'});
+      if(code){vib();handleQR(code.data);}
+      else toast('QR Code nao encontrado. Tente de novo.','err');
+    };
+    if(typeof BarcodeDetector!=='undefined'){
+      new BarcodeDetector({formats:['qr_code']}).detect(img)
+        .then(codes=>{if(codes.length){vib();handleQR(codes[0].rawValue);}else tryJsQR();})
+        .catch(tryJsQR);
+    } else tryJsQR();
+  };
+  img.src=dataUrl;
+}
+
 
 function startQREngine(){
   const v=document.getElementById('cam-video');
@@ -12190,6 +12225,19 @@ function startQREngine(){
     }
     camAF=requestAnimationFrame(tick);
   }
+}
+
+function captureOrFallback(){
+  // Verifica se o vídeo tem stream real
+  const v=document.getElementById('cam-video');
+  if(!v||!camStream||!v.videoWidth||v.videoWidth<10){
+    // WebView sem stream — usa fallback
+    stopCam();
+    document.getElementById('cam-wrap').classList.remove('on');
+    useCameraFallback();
+    return;
+  }
+  captureAndOCR();
 }
 
 async function captureAndOCR(){
