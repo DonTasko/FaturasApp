@@ -12119,6 +12119,11 @@ REGRAS CRÍTICAS:
 // ── CÂMARA ──
 function openOCRScan(){
   camMode='ocr';
+  // No WebIntoApp a câmara pode não funcionar — oferece escolha
+  if(window._webViewNoCamera){
+    useCameraFallback();
+    return;
+  }
   document.getElementById('cam-wrap').classList.add('on');
   document.getElementById('cam-shutter').style.display='flex';
   document.getElementById('cam-hint').textContent='FOTOGRAFE A FATURA COMPLETA';
@@ -12166,11 +12171,71 @@ async function startCam(){
     if(!v||!camStream)return;
     if((v.videoWidth||0)<10){
       console.warn('Câmara sem stream — fallback activado');
+      window._webViewNoCamera=true; // marca para próximas chamadas
       stopCam();
       document.getElementById('cam-wrap').classList.remove('on');
       useCameraFallback();
     }
   },2500);
+}
+
+// ── Fallback câmara para WebView/WebIntoApp ──
+// Usa input[file] com capture=environment — abre câmara nativa Android
+function useCameraFallback(){
+  const inp=document.createElement('input');
+  inp.type='file';
+  inp.accept='image/*';
+  inp.setAttribute('capture','environment');
+  inp.onchange=async e=>{
+    const file=e.target.files?.[0];
+    if(!file)return;
+    const dataUrl=await fileToDataUrl(file);
+    if(camMode==='qr'){
+      tryReadQRFromImage(dataUrl);
+    } else {
+      // Modo OCR — analisa a imagem com Gemini/Claude
+      showOCRLoading(true);
+      document.querySelector('#ocr-loading .ocr-label').textContent='A analisar fatura';
+      try{
+        const effectiveQR=_pendingQRData||null;
+        const result=await callClaudeOCR(dataUrl,effectiveQR);
+        _pendingQRData=null;
+        showOCRLoading(false);
+        if(result){
+          if(effectiveQR){
+            if(effectiveQR.nif)result.nif=effectiveQR.nif;
+            if(effectiveQR.num)result.num=effectiveQR.num;
+            if(effectiveQR.date)result.date=effectiveQR.date;
+            if(effectiveQR.total)result.total=effectiveQR.total;
+            if(effectiveQR.vat)result.vat=effectiveQR.vat;
+          }
+          result.photo=dataUrl;
+          result.source='ocr';
+          const n=result.items?.length||0;
+          toast(n>0?'✅ '+n+' artigo(s) extraído(s)!':'⚠ Sem artigos — adicione manualmente','err');
+          openInvoiceForm(result);
+        } else {
+          toast('⚠ Não foi possível ler. Tente de novo.','err');
+          openInvoiceForm({photo:dataUrl,items:[],source:'manual'});
+        }
+      }catch(err){
+        _pendingQRData=null;showOCRLoading(false);
+        console.error('OCR fallback error:',err);
+        openInvoiceForm({photo:dataUrl,items:[],source:'manual'});
+      }
+    }
+  };
+  inp.click();
+}
+
+// fileToDataUrl helper (se não existir)
+function fileToDataUrl(file){
+  return new Promise((res,rej)=>{
+    const r=new FileReader();
+    r.onload=e=>res(e.target.result);
+    r.onerror=rej;
+    r.readAsDataURL(file);
+  });
 }
 
 // Tenta ler QR Code de uma imagem estática (fallback WebView)
